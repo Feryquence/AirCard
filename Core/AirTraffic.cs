@@ -60,6 +60,7 @@ namespace AirCard.Core
                     {
                         Native.ATHostConnectionSendHostInfo(connection, host.Handle); Thread.Sleep(200);
                         Native.ATHostConnectionSendSyncRequest(connection, classes.Handle, anchors.Handle, host.Handle);
+                        log(AppleSyncRuntime.GrappaState(Native.ATHostConnectionGetGrappaSessionId(connection)));
                         WaitFor(connection, "ReadyForSync", 40, log);
                         Native.ATHostConnectionSendMetadataSyncFinished(connection, types.Handle, anchors.Handle);
                         var manifest = WaitFor(connection, "AssetManifest", 60, log);

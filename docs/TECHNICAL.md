@@ -44,17 +44,25 @@
 
 日志记录设备型号、iOS 版本、设备会话连接方式及 Apple 驱动版本。AirTraffic 实际通道由 Apple 驱动选择。同步握手依次等待 `SyncAllowed`、`ReadyForSync`、`AssetManifest`，这些步骤完成后才发送资源移动确认。
 
+同步前检查机器级 CoreFP/iTunes 注册路径、iTunes.exe 的 App Paths 注册路径和桌面版 iTunes 默认目录，按顺序加载有效的 64 位 `CoreFP.dll`，并记录路径和版本。使用绝对路径和组件目录解析依赖，不修改注册表、系统 PATH，也不随程序分发 Apple DLL。刷新设备时检查驱动和 CoreFP；无法加载时提示安装或修复完整桌面版 iTunes，并在卡面读写前停止。环境弹窗只提供完整 iTunes 下载与取消。查找失败只能证明这些位置没有可加载的组件，不能据此断定用户未安装任何版本的 iTunes。
+
+Grappa 初始化由 Apple 的 `ATHostConnectionSendSyncRequest` 内部执行；应用不自行生成认证数据或绕过认证。发送请求后通过导出的 `ATHostConnectionGetGrappaSessionId` 记录本机会话是否创建；非零仅表示本机创建成功，仍须等待手机确认。手机日志中的 `Grappa session could not be established` 可定位到该阶段，但不能单凭 `ErrorCode=4` 推断所有环境的具体原因。预加载用于修正组件查找问题，故障设备仍需实测验证。
+
 收到 `SyncFailed` 或提前收到 `SyncFinished` 时，报告等待阶段及设备提供的标量错误字段；不输出整个同步清单。等待 `ReadyForSync` 时被拒绝不代表卡面文件不存在，也不能单凭这一条错误确定是 iOS 或驱动不兼容。缺少文件可以跳过，同步失败仍会中断操作并执行已有的清理检查。排查时请提供版本、连接方式、图书是否已安装并打开，以及失败阶段和错误详情；分享日志前遮盖个人设备和卡片标识。
 
+
+## 本地同步日志采集
+
+在导出区域勾选“采集导出诊断日志”后，程序会先连接所选设备的 `com.apple.syslog_relay`，再执行原有导出流程，并在流程结束后关闭日志连接。日志连接启动失败会取消本次导出；采集期间断开会单独报告，不把采集错误当作卡面导出成功。
+
+匹配 `atc` 进程及 AirTraffic、ATFoundation、Books 子系统的实时日志保存为所选文件夹中的 `aircard-device-sync-时间-编号.log`，内容上限 2 MiB。采集默认关闭，不上传内容，不读取历史系统日志。系统隐藏或不输出的细节无法补全；零匹配日志不能证明同步正常。分享前请检查设备和文件标识。普通操作日志仍可通过“保存日志”导出。
 
 ## 网络与本地数据
 
 - 不上传卡面，不保存扫描历史。操作日志、恢复记录和原始备份可能包含设备或卡片标识，请勿直接提交到公共仓库。
 - USB 设备发现连接本机 Apple 服务；WiFi 模式连接已配对设备。
 - PDF 使用本机 Windows 渲染器。
-- 只有用户选择驱动下载或安装时才启动对应流程。“仅安装驱动”连接 Apple 和微软下载服务，Windows 可能访问证书验证服务。
-- 安装脚本内置于程序，不会在运行时下载并执行 GitHub 上的最新脚本。检查 Apple EXE/MSI 签名、安装退出码、重启要求及所需 DLL。失败不自动卸载已安装的组件。
-- 安装日志位于 `%LOCALAPPDATA%\AirCard.NetFramework\DriverInstaller\<操作编号>`，下载的临时安装包在结束时尝试清理。
+- 只有用户点击“下载完整 iTunes”时才打开 Apple 官方下载地址，由用户完成安装。
 
 ## 固定上游版本
 
@@ -63,6 +71,5 @@
 | AirCard-Windows | `b4d07e55fb21cf8be5414c35f5b29614a93135ad` |
 | airlift | `c684cd41ca0ded2d1ab780c15f6ead05509ce062` |
 | dnSpy | `2b6dcfaf602fb8ca6462b8b6237fdfc0c74ad994` |
-| 驱动脚本 | 见 `ThirdParty/Apple-Mobile-Drivers-Installer/NOTICE.md` 的原文件 SHA-256 |
 
 主题的原始副本、哈希与许可证保留于 `ThirdParty/dnSpy`。运行和构建不依赖任何开发者的个人磁盘路径。

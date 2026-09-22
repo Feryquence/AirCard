@@ -100,6 +100,7 @@ namespace AirCard.Core
         }
         internal static readonly string[] BooksPaths = BooksConfiguration.Paths;
         readonly Action<string> log;
+        bool syncRuntimePrepared;
         public WalletEngine(Action<string> log) { this.log = log ?? (_ => { }); }
         static string RecordPath(RecoveryRecord r) { return Path.Combine(Storage.RecoveryRoot, r.Token + ".json"); }
         static string Source(RecoveryRecord r) { return "airlift-src-" + r.Token; }
@@ -112,6 +113,7 @@ namespace AirCard.Core
         }
         void PrepareOperation(string udid, ConnectionMode mode)
         {
+            if (!syncRuntimePrepared) { log(AppleSyncRuntime.PrepareRequired()); syncRuntimePrepared = true; }
             // Manual recovery has been removed from the UI. Resolve only this device's
             // previous transaction before the next explicit write/export request.
             if (Pending().Length != 0) CompletePending(udid, mode);

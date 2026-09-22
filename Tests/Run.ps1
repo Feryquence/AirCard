@@ -18,8 +18,6 @@ $compilerArgs += Join-Path $PSScriptRoot 'Smoke.cs'
 if ($LASTEXITCODE -ne 0) { throw 'Test compilation failed.' }
 & $exe $Artifacts
 if ($LASTEXITCODE -ne 0) { throw "Tests failed: $LASTEXITCODE" }
-& (Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe') -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'DriverInstaller.ps1') -Artifacts $Artifacts
-if ($LASTEXITCODE -ne 0) { throw 'Driver installer helper tests failed.' }
 if ($NativeBindings) {
     $nativeExe = Join-Path $Artifacts 'AirCard.NativeSmoke.exe'
     & $compiler /nologo /target:exe /platform:x64 /langversion:7.3 "/out:$nativeExe" "/r:$Artifacts\AirCard.exe" (Join-Path $PSScriptRoot 'NativeSmoke.cs')

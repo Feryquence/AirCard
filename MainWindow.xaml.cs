@@ -44,6 +44,7 @@ namespace AirCard
             ScanButton.IsEnabled = scanning != null || (idle && device); ScanButton.Content = scanning != null ? "停止扫描" : "扫描卡片";
             ChooseSkinButton.IsEnabled = idle; SaveSkinButton.IsEnabled = idle && skin != null;
             ExportButton.IsEnabled = idle && device && hash;
+            CaptureExportLog.IsEnabled = idle;
             ApplySkinButton.IsEnabled = idle && device && hash && skin != null;
             Progress.Visibility = idle ? Visibility.Collapsed : Visibility.Visible;
         }
@@ -61,36 +62,23 @@ namespace AirCard
         }
         Window CreateDriverNotice(string message)
         {
-            return new Controls.NoticeWindow("安装 Apple 驱动", message + "\n\n下载完整 iTunes：打开 Apple 官方下载页面。\n仅安装驱动：下载 iTunes 安装包并提取设备支持组件，再从微软下载 USB 和网络驱动；不安装 iTunes。需要联网和管理员权限。",
-                "下载完整 iTunes", true, "仅安装驱动");
+            return new Controls.NoticeWindow("安装完整 iTunes", message + "\n\n请安装或修复 Apple 官方完整 64 位桌面版 iTunes，以提供设备驱动和卡面读写所需的同步组件。安装完成后重新启动 Air Card。\n\n点击下载将打开 Apple 官方下载地址。",
+                "下载完整 iTunes", true);
         }
-        async Task PromptDriver(AppleDriverException error)
+        void PromptDriver(AppleDriverException error)
         {
-            DriverInfo.Text = "Apple 驱动未安装或不可用。";
+            DriverInfo.Text = "Apple 设备驱动或同步组件未安装或不可用。";
             var dialog = (Controls.NoticeWindow)CreateDriverNotice(error.Message); dialog.Owner = this;
             if (dialog.ShowDialog() != true) return;
-            if (!dialog.SecondarySelected)
-            {
-                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(DriverInstaller.ITunesUrl) { UseShellExecute = true }); }
-                catch (Exception ex) { Log(ex.ToString()); Notice("无法打开浏览器", "请手动打开：" + DriverInstaller.ITunesUrl); }
-                return;
-            }
-            try
-            {
-                StatusText.Text = "正在下载并安装 Apple 驱动，请稍候…";
-                bool reboot = await Task.Run(() => DriverInstaller.Install(Log));
-                StatusText.Text = reboot ? "驱动已安装，需要重启电脑。" : "驱动已安装，请重新启动 Air Card。";
-                DriverInfo.Text = StatusText.Text; Notice("驱动安装完成", StatusText.Text);
-            }
-            catch (Win32Exception ex) when (ex.NativeErrorCode == 1223) { StatusText.Text = "已取消驱动安装。"; Log(StatusText.Text); }
-            catch (Exception ex) { StatusText.Text = "驱动安装未完成。"; Log(ex.ToString()); Notice("驱动安装未完成", ex.Message); }
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(AppleSyncRuntime.ITunesUrl) { UseShellExecute = true }); }
+            catch (Exception ex) { Log(ex.ToString()); Notice("无法打开浏览器", "请手动打开：" + AppleSyncRuntime.ITunesUrl); }
         }
         async Task<bool> Run(string action, Func<Task> operation, Func<string> completedMessage = null, bool notify = false)
         {
             if (busy || scanning != null) return false;
             busy = true; UpdateState(); StatusText.Text = action; Log(action);
             try { await operation(); StatusText.Text = completedMessage == null ? action + "：完成" : completedMessage(); if (notify) Notice("操作完成", StatusText.Text); return true; }
-            catch (AppleDriverException ex) { StatusText.Text = action + "：Apple 驱动不可用"; Log(ex.ToString()); await PromptDriver(ex); return false; }
+            catch (AppleDriverException ex) { StatusText.Text = action + "：Apple 环境不完整"; Log(ex.ToString()); PromptDriver(ex); return false; }
             catch (CardAppliedException ex) { StatusText.Text = ex.Message; Log(ex.ToString()); Notice("卡面已写入，后续处理未完成", ex.Message); return false; }
             catch (OperationCanceledException ex) { StatusText.Text = ex.Message; Log(ex.Message); return false; }
             catch (Exception ex) { StatusText.Text = action + "：失败，详见日志"; Log(ex.ToString()); if (action == "应用卡面") Notice("应用未完成", ex.Message + "\n详细原因见操作日志。"); return false; }
@@ -109,8 +97,9 @@ namespace AirCard
             string old = Selected == null ? null : Selected.Udid;
             await Run("刷新设备", async () => {
                 ClearCurrentCard();
-                var list = await Task.Run(() => { Devices.CheckSupport(); return Devices.List(); });
-                DriverInfo.Text = "Apple 驱动已加载。";
+                DeviceSelect.ItemsSource = null;
+                var list = await Task.Run(() => { Devices.CheckSupport(); Log(AppleSyncRuntime.PrepareRequired()); return Devices.List(); });
+                DriverInfo.Text = "Apple 设备驱动和同步组件已加载。";
                 DeviceSelect.ItemsSource = list; DeviceSelect.SelectedItem = list.FirstOrDefault(d => d.Udid == old) ?? list.FirstOrDefault();
                 Log(list.Count == 0 ? "未发现设备。请连接并解锁 iPhone，信任此电脑。" : "发现 " + list.Count + " 台设备。");
                 foreach (var device in list) Log("设备环境: " + device.Product + " · iOS " + device.Version + " · " + device.Transport);
@@ -203,9 +192,33 @@ namespace AirCard
         {
             if (Selected == null || currentCard == null) return; string udid = Selected.Udid, hash = currentCard.Hash; var mode = Mode;
             string folder = Controls.FolderPicker.Select(this); if (folder == null) return;
+            bool captureLog = CaptureExportLog.IsChecked == true;
             WalletBatchExportResult result = null;
             await Run("批量导出当前卡面", async () => {
-                result = await Task.Run(() => new WalletEngine(Log).ExportFolder(udid, mode, hash, folder, true));
+                DeviceLogCapture capture = null;
+                string trace = Path.Combine(folder, "aircard-device-sync-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".log");
+                try
+                {
+                    if (captureLog)
+                    {
+                        Log("开始采集手机同步日志: " + trace);
+                        capture = await DeviceLogCapture.StartAsync(udid, mode, trace);
+                    }
+                    result = await Task.Run(() => new WalletEngine(Log).ExportFolder(udid, mode, hash, folder, true));
+                }
+                finally
+                {
+                    if (capture != null)
+                    {
+                        // Await the reader before allowing a new operation or closing its native handles.
+                        await Task.Delay(750); // Allow the device to flush the final failure messages.
+                        await capture.StopAsync();
+                        Log("手机同步日志已保存: " + trace + "（" + capture.Lines + " 行）");
+                        if (capture.Truncated) Log("诊断日志达到 2 MiB 上限，后续内容未保存。");
+                        if (capture.Error != null) Log("系统日志采集异常: " + capture.Error);
+                        else if (capture.Lines == 0) Log("手机未输出匹配的同步日志；不能据此判断同步正常。");
+                    }
+                }
             }, () => result.Summary, notify: true);
         }
         void SaveLog_Click(object sender, RoutedEventArgs e)

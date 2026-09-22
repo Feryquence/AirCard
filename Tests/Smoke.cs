@@ -1,4 +1,4 @@
-﻿using AirCard;
+using AirCard;
 using AirCard.Core;
 using System;
 using System.Collections.Generic;
@@ -26,7 +26,7 @@ class Smoke
         try
         {
             artifacts = args[0]; Storage.Root = Path.Combine(artifacts, "state");
-            TestPlist(); TestSyncDiagnostics(); TestZip(); TestArtwork(); TestPdfImport(); TestCardFormatMatching(); TestStagingProbe(); TestWalletFace(); TestBatchExport(); TestScanner(); TestSingleCardScan(); TestRecovery(); TestBooksConfiguration(); TestCacheResults(); TestStorage(); TestPendingDevices(); TestDriverInstaller(); TestWindow();
+            TestPlist(); TestSyncDiagnostics(); TestSyncRuntime(); TestSyncLogFilter(); TestZip(); TestArtwork(); TestPdfImport(); TestCardFormatMatching(); TestStagingProbe(); TestWalletFace(); TestBatchExport(); TestScanner(); TestSingleCardScan(); TestRecovery(); TestBooksConfiguration(); TestCacheResults(); TestStorage(); TestPendingDevices(); TestWindow();
             string result = "PASS: " + checks + " assertions; no iPhone operations performed.";
             Console.WriteLine(result); File.WriteAllText(Path.Combine(artifacts, "results.txt"), result); return 0;
         }
@@ -67,6 +67,57 @@ class Smoke
         Assert(broken.Message.Contains("SyncFailed") && broken.Message.Contains("ErrorCode=<无法读取>"), "bad diagnostic field preserves original sync failure");
         string longDetail = SyncDiagnostics.Failure("ReadyForSync", "SyncFailed", key => key == "Reason" ? new string('x', 600) : null).Message;
         Assert(longDetail.Contains(new string('x', 512) + "…") && !longDetail.Contains(new string('x', 513)), "sync reason length bounded");
+    }
+    static void TestSyncRuntime()
+    {
+        Assert(typeof(WalletEngine).Assembly.GetName().Version.ToString() == "1.1.0.0", "release assembly version is 1.1");
+        Assert(!typeof(WalletEngine).Assembly.GetManifestResourceNames().Any(name => name.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase)), "release no longer embeds driver installer scripts");
+        Assert(AppleSyncRuntime.FromITunesExecutable("\"D:\\Apple Tools\\iTunes.exe\"") == @"D:\Apple Tools\CoreFP.dll", "sync component locates custom desktop iTunes directory");
+        Assert(AppleSyncRuntime.FromITunesExecutable(@"\\host\share\iTunes.exe") == null, "sync component rejects network executable registration");
+        Assert(AppleSyncRuntime.FromITunesExecutable(@"C:\iTunes.exe --argument") == null, "sync component rejects executable commands");
+        Assert(AppleSyncRuntime.FromITunesExecutable("iTunes.exe") == null, "sync component rejects relative executable registration");
+        var paths = AppleSyncRuntime.CandidatePaths(new[] { null, "", "CoreFP.dll", @"C:CoreFP.dll", @"\\server\share\CoreFP.dll", @"C:\Apple\different.dll", @"C:\Apple\CoreFP.dll", @"c:\apple\COREFP.dll", "\"D:\\iTunes\\CoreFP.dll\"" });
+        Assert(paths.SequenceEqual(new[] { @"C:\Apple\CoreFP.dll", @"D:\iTunes\CoreFP.dll" }), "sync component candidates preserve preference and reject relative/network/unrelated paths");
+        var image = new byte[256];
+        using (var stream = new MemoryStream(image)) using (var writer = new BinaryWriter(stream))
+        {
+            writer.Write((ushort)0x5a4d); stream.Position = 0x3c; writer.Write(0x80);
+            stream.Position = 0x80; writer.Write(0x4550); writer.Write((ushort)0x8664);
+            stream.Position = 0x96; writer.Write((ushort)0x2000); writer.Write((ushort)0x20b);
+        }
+        using (var stream = new MemoryStream(image)) Assert(AppleSyncRuntime.IsX64Library(stream), "sync component accepts x64 PE32+ DLL header");
+        var x86 = (byte[])image.Clone(); x86[0x84] = 0x4c; x86[0x85] = 0x01;
+        using (var stream = new MemoryStream(x86)) Assert(!AppleSyncRuntime.IsX64Library(stream), "sync component rejects 32-bit runtime");
+        var executable = (byte[])image.Clone(); executable[0x97] = 0;
+        using (var stream = new MemoryStream(executable)) Assert(!AppleSyncRuntime.IsX64Library(stream), "sync component rejects executable instead of DLL");
+        var badOffset = (byte[])image.Clone(); badOffset[0x3f] = 0x7f;
+        using (var stream = new MemoryStream(badOffset)) Assert(!AppleSyncRuntime.IsX64Library(stream), "sync component rejects PE header beyond file");
+        using (var stream = new MemoryStream(new byte[4])) Assert(!AppleSyncRuntime.IsX64Library(stream), "sync component truncated file rejected");
+        Assert(AppleSyncRuntime.GrappaState(0).Contains("未成功"), "zero Grappa session is not reported as success");
+        Assert(AppleSyncRuntime.GrappaState(123).Contains("等待手机确认"), "host Grappa creation does not claim device confirmation");
+    }
+    static void TestSyncLogFilter()
+    {
+        var lines = new List<string>(); var filter = new SyncLogFilter(lines.Add);
+        byte[] bytes = Encoding.UTF8.GetBytes("Sep 22 19:00:00 phone atc(Books)[1]: 同步失败\r\nSep 22 19:00:00 phone other[2]: private unrelated text\0atc[1]: ErrorCode=4\0");
+        for (int i = 0; i < bytes.Length; i++) filter.Feed(new[] { bytes[i] }, 1);
+        Assert(lines.Count == 2 && lines[0].EndsWith("同步失败") && lines[1].EndsWith("ErrorCode=4"), "device log frames split UTF8 and null/newline records");
+        Assert(filter.Lines == 2 && !filter.Truncated, "device log counts only matching records");
+        Assert(!lines.Any(x => x.Contains("private unrelated")), "device log excludes unrelated processes");
+        var small = new SyncLogFilter(lines.Add, 12);
+        byte[] record = Encoding.UTF8.GetBytes("atc: ignored\natc[1]: text too long\n"); small.Feed(record, record.Length);
+        Assert(small.Truncated && small.Lines == 0, "device log enforces byte budget");
+        var longLine = new SyncLogFilter(lines.Add);
+        byte[] oversized = Encoding.UTF8.GetBytes("atc[1]: " + new string('x', 65536) + "\natc[1]: recovered\n");
+        longLine.Feed(oversized, oversized.Length);
+        Assert(longLine.Lines == 1 && lines.Last() == "atc[1]: recovered", "oversized log record discarded without poisoning next record");
+        Throws(() => filter.Feed(new byte[1], 2), "device log invalid native length rejected");
+        var subsystem = new SyncLogFilter(lines.Add);
+        byte[] sub = Encoding.UTF8.GetBytes("process(AirTrafficDevice)[1]: failed\n"); subsystem.Feed(sub, sub.Length);
+        Assert(subsystem.Lines == 1, "device log includes named AirTraffic subsystem");
+        byte[] continuation = Encoding.UTF8.GetBytes("atc[1]: failure {\n    ErrorCode = 4;\n}\nother[2]: next record\n    unrelated continuation\n");
+        int previous = lines.Count; subsystem.Feed(continuation, continuation.Length);
+        Assert(lines.Count == previous + 3 && lines.Contains("    ErrorCode = 4;"), "device log retains error continuations without unrelated record continuations");
     }
     static void TestZip()
     {
@@ -447,19 +498,6 @@ class Smoke
         Assert(!WalletEngine.IsWalletCacheTarget(root + ".pkpass"), "actual card artwork cannot become optional");
         Assert(!WalletEngine.IsWalletCacheTarget("/var/mobile/Library/Caches/TelephonyUI-10") && !WalletEngine.IsWalletCacheTarget(root + "/../x.cache"), "theme and traversal targets cannot become optional");
     }
-    static void TestDriverInstaller()
-    {
-        var type = typeof(WalletEngine).Assembly.GetType("AirCard.Core.DriverInstaller");
-        var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
-        string script = (string)type.GetMethod("ScriptText", flags).Invoke(null, null);
-        Assert(script.Contains("AppleMobileDeviceSupport64.msi") && script.Contains("https://catalog.s.download.windowsupdate.com") && script.Contains("Assert-AppleSignature"), "reviewed driver script is embedded and readable without external files");
-        string path = Path.Combine(artifacts, "space 中文 O'Brien", "AppleDrivInstaller.ps1");
-        var info = (System.Diagnostics.ProcessStartInfo)type.GetMethod("StartInfo", flags).Invoke(null, new object[] { path });
-        Assert(info.UseShellExecute && info.Verb == "runas" && info.WindowStyle == System.Diagnostics.ProcessWindowStyle.Hidden,
-            "driver install explicitly requests elevation and keeps its helper hidden");
-        Assert(info.Arguments.EndsWith("-File \"" + path + "\"") && info.Arguments.Contains("-NoProfile -NonInteractive") && !info.Arguments.Contains("-Command"),
-            "script paths remain literal even with spaces, Unicode and apostrophes");
-    }
     static void TestWindow()
     {
         var app = new App(); app.InitializeComponent(); var window = new MainWindow();
@@ -516,8 +554,8 @@ class Smoke
         var notice = (Window)typeof(MainWindow).GetMethod("CreateDriverNotice", flags).Invoke(window, new object[] { "未找到 64 位 Apple Mobile Device Support。" });
         var noticeGrid = (Grid)((Border)notice.Content).Child;
         var buttonPanel = ((StackPanel)noticeGrid.Children[1]).Children.OfType<StackPanel>().Single();
-        Assert(buttonPanel.Children.OfType<Button>().Select(button => (string)button.Content).SequenceEqual(new[] { "下载完整 iTunes", "仅安装驱动", "取消" }),
-            "missing drivers present all three requested choices in the themed dialog");
+        Assert(buttonPanel.Children.OfType<Button>().Select(button => (string)button.Content).SequenceEqual(new[] { "下载完整 iTunes", "取消" }),
+            "missing environment offers only full iTunes download and cancel");
         Assert(buttonPanel.Children.OfType<Button>().Last().IsCancel && !(bool)notice.GetType().GetProperty("SecondarySelected", flags).GetValue(notice),
             "cancel/close cannot choose driver installation by default");
         var noticeContent = (FrameworkElement)notice.Content;

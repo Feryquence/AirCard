@@ -26,6 +26,9 @@ class NativeSmoke
                 count++;
             }
             var cf = assembly.GetType("AirCard.Core.Cf"); var flags = BindingFlags.Static | BindingFlags.NonPublic;
+            string syncRuntime = (string)typeof(AppleSyncRuntime).GetMethod("Prepare", flags).Invoke(null, null);
+            if (syncRuntime.Contains("；路径：") && GetModuleHandle("CoreFP.dll") == IntPtr.Zero) throw new Exception("Sync component was not loaded.");
+            Console.WriteLine(syncRuntime);
             var value = cf.GetMethod("From", flags).Invoke(null, new object[] { Plist.Dict("name", "白色卡面", "data", new byte[] {0,1,255}, "number", 2) });
             byte[] binary;
             using ((IDisposable)value)

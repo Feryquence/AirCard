@@ -36,8 +36,6 @@
     <Content Include="ThirdParty\**\*.txt;ThirdParty\**\NOTICE.md;ThirdParty\**\REVISION;LICENSE.txt;README.md"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
     <None Include="App.config" />
     <Content Include="docs\**\*"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
-    <EmbeddedResource Include="ThirdParty\Apple-Mobile-Drivers-Installer\AppleDrivInstaller.ps1"><LogicalName>AirCard.AppleDrivInstaller.ps1</LogicalName></EmbeddedResource>
-    <Content Include="ThirdParty\Apple-Mobile-Drivers-Installer\*.ps1"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

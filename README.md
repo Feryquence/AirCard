@@ -10,7 +10,8 @@
 - 批量导出可读取的原始卡面和 Wallet 显示缓存。
 - 导入 PNG、JPG、WebP、未加密的单页 PDF，预览处理后的卡面。
 - 点击应用后识别卡面格式；不匹配时询问转换或取消。
-- 缺少 Apple 驱动时，可下载完整 iTunes，或仅安装设备支持与驱动。
+- 检查 Apple 设备驱动和 CoreFP 同步组件，缺失时引导下载完整 iTunes。
+- 可选采集导出期间的手机同步日志，帮助排查同步握手失败。
 - 使用 dnSpy 派生的深色 WPF 主题。
 
 这是实验性设备读写工具。读取使用 Apple 图书同步通道临时移动资源并归位，操作期间请保持手机连接、解锁。不同 iOS 版本和卡片资源的兼容性存在差异；不能保证所有卡面都能读取或替换。具体机制和限制见 [技术说明](docs/TECHNICAL.md)。
@@ -19,9 +20,9 @@
 
 - Windows 10 或更新版本，64 位。
 - .NET Framework 4.7.2 或更新版本。
-- 64 位 Apple Mobile Device Support。首次通过 USB 连接时，需要在 iPhone 上信任此电脑。
+- Apple 官方完整 64 位桌面版 iTunes，提供设备驱动和 CoreFP 同步组件。首次通过 USB 连接时，需要在 iPhone 上信任此电脑。
 
-驱动提示中的“仅安装驱动”仍会下载 iTunes 安装包，从中提取设备支持组件，再从微软更新目录下载 USB 和网络驱动；不安装 iTunes 本体。安装需要联网和管理员权限，安装结束后按提示重启程序或电脑。
+环境提示仅提供“下载完整 iTunes”和“取消”。点击下载会打开 [Apple 官方 64 位下载地址](https://www.apple.com/itunes/download/win64)，请自行完成安装或修复，然后重新启动 Air Card。程序不再提供仅安装驱动的脚本。能够连接手机并不代表同步组件完整；缺少可加载的 CoreFP 时不会开始卡面读写。
 
 ## 使用
 
@@ -67,7 +68,7 @@ PNG 输出居中裁切为 **1536 × 969**；图片转 PDF 后仍是位图内容�
 .\Tests\Run.ps1 -Artifacts "$env:TEMP\AirCard-tests" -NativeBindings
 ```
 
-最近一次本机检查通过 **219 项应用断言和 14 项驱动脚本断言**。驱动安装测试使用模拟进程和签名结果，完整安装过程尚未在无驱动电脑上验证。原始格式识别与转换流程的回归测试为离线检查，不代表所有卡片的真机兼容性。
+测试涵盖卡面处理、资源读写流程、同步诊断、环境提示和界面行为；可选原生检查验证已安装的 Apple 接口及组件加载。离线检查不代表所有设备和卡片的真机兼容性，故障设备补齐 CoreFP 后仍需验证。
 
 ## 源码结构
 
@@ -87,6 +88,5 @@ PNG 输出居中裁切为 **1536 × 969**；图片转 PDF 后仍是位图内容�
 - [Lumid-Off/AirCard-Windows](https://github.com/Lumid-Off/AirCard-Windows)：设备引擎移植基线，MIT。
 - [0xjohnnydev/airlift](https://github.com/0xjohnnydev/airlift)：间接读取参考，MIT。
 - [dnSpy/dnSpy](https://github.com/dnSpy/dnSpy)：主题和控件，经 ConnectDeveloperTool 适配，GPL-3.0-or-later。
-- [NelloKudo/Apple-Mobile-Drivers-Installer](https://github.com/NelloKudo/Apple-Mobile-Drivers-Installer)：内置驱动安装脚本的上游来源，GPL-3.0。
 
 Apple 和 iTunes 是各自权利人的商标。本项目与 Apple 无隶属关系。

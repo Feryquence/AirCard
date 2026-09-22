@@ -28,7 +28,7 @@ namespace AirCard.Core
                 if (loaded) return path;
                 if (!Environment.Is64BitProcess) throw new InvalidOperationException("请使用 x64 版本。");
                 if (!new[] { CF, MD, AT }.All(n => File.Exists(Path.Combine(path, n))))
-                    throw new AppleDriverException("未找到 64 位 Apple Mobile Device Support。请选择安装方式。");
+                    throw new AppleDriverException("未找到 64 位 Apple Mobile Device Support。请安装完整 64 位桌面版 iTunes。");
                 if (AddDllDirectory(path) == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error());
                 foreach (string dll in new[] { CF, MD, AT })
                 {
@@ -47,6 +47,17 @@ namespace AirCard.Core
                 try { return name + " " + System.Diagnostics.FileVersionInfo.GetVersionInfo(Path.Combine(path, name)).FileVersion; }
                 catch (Exception) { return name + " <版本不可用>"; }
             }));
+        }
+        internal static void LoadSyncLibrary(string path)
+        {
+            lock (Gate)
+            {
+                // An absolute path plus DLL_LOAD_DIR resolves the installed component
+                // without searching the current working directory for CoreFP.dll.
+                var handle = LoadLibraryEx(path, IntPtr.Zero, 0x100 | 0x1000);
+                if (handle == IntPtr.Zero) throw new Win32Exception(Marshal.GetLastWin32Error(), "无法加载 Apple 同步组件");
+                Modules.Add(handle);
+            }
         }
         [DllImport(CF, CallingConvention = CallingConvention.Cdecl)] internal static extern IntPtr CFStringCreateWithCString(IntPtr allocator, byte[] text, uint encoding);
         [DllImport(CF, CallingConvention = CallingConvention.Cdecl)] internal static extern IntPtr CFStringGetLength(IntPtr value);
@@ -95,6 +106,7 @@ namespace AirCard.Core
         [DllImport(MD, CallingConvention = CallingConvention.Cdecl)] internal static extern int AFCDirectoryRead(IntPtr afc, IntPtr directory, out IntPtr entry);
         [DllImport(MD, CallingConvention = CallingConvention.Cdecl)] internal static extern int AFCDirectoryClose(IntPtr afc, IntPtr directory);
         [DllImport(AT, CallingConvention = CallingConvention.Cdecl)] internal static extern IntPtr ATHostConnectionCreate(IntPtr udid);
+        [DllImport(AT, CallingConvention = CallingConvention.Cdecl)] internal static extern uint ATHostConnectionGetGrappaSessionId(IntPtr connection);
         [DllImport(AT, CallingConvention = CallingConvention.Cdecl)] internal static extern void ATHostConnectionRelease(IntPtr connection);
         [DllImport(AT, CallingConvention = CallingConvention.Cdecl)] internal static extern void ATHostConnectionSendHostInfo(IntPtr connection, IntPtr info);
         [DllImport(AT, CallingConvention = CallingConvention.Cdecl)] internal static extern void ATHostConnectionSendSyncRequest(IntPtr connection, IntPtr classes, IntPtr anchors, IntPtr info);
