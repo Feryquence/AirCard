@@ -66,7 +66,7 @@
             <TextBlock Text="卡面导出" Style="{StaticResource SectionTitle}" Margin="0,24,0,8" />
             <TextBlock Style="{StaticResource Hint}" Text="选择一个文件夹，程序会在其中创建 AirCard_output_卡片Hash 子目录，批量导出可读取的文件。&#10;&#10;包含 cardBackgroundCombined 的 @3x PNG、@2x PNG、PDF，diffuse 的 @3x、@2x PNG，以及 background、strip 各自的 @3x PNG、@2x PNG、PDF，保留原始文件名。Wallet 卡面缓存另存为“Wallet 卡面缓存.png”或“.jpg”，可能包含圆角及已合成的文字。&#10;&#10;没有读取到的资源会跳过，完成后显示导出数量。重复导出会更新成功读取的同名文件；未读取到的旧文件和其他文件保留。&#10;&#10;导出过程中请保持手机连接，等操作完成再拔线。" />
             <TextBlock Text="关于此版本" Style="{StaticResource SectionTitle}" Margin="0,24,0,8" />
-            <TextBlock Style="{StaticResource Hint}" Text="Air Card 1.1 · C# · .NET Framework 4.7.2 · WPF · Windows x64&#10;设备引擎移植自 Lumid-Off/AirCard-Windows 与 0xjohnnydev/airlift。&#10;源代码与第三方授权见随附 README 和 ThirdParty 目录。" />
+            <TextBlock Style="{StaticResource Hint}" Text="Air Card 1.2 · C# · .NET Framework 4.7.2 · WPF · Windows x64&#10;设备引擎移植自 Lumid-Off/AirCard-Windows 与 0xjohnnydev/airlift。&#10;源代码与第三方授权见随附 README 和 ThirdParty 目录。" />
             <TextBlock x:Name="DriverInfo" Style="{StaticResource Hint}" Margin="0,18,0,0" />
           </StackPanel></ScrollViewer>
         </TabItem>

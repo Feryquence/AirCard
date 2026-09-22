@@ -9,8 +9,10 @@ namespace AirCard.Core
         public string DirectoryPath { get; internal set; }
         public List<string> SavedFiles { get; private set; } = new List<string>();
         public List<string> UnavailableFiles { get; private set; } = new List<string>();
+        public List<string> UnrecognizedFiles { get; private set; } = new List<string>();
         public string Summary { get { return (SavedFiles.Count == 0 ? "未读取到可导出的卡面文件。" : "已导出 " + SavedFiles.Count + " 个文件。") +
-            (UnavailableFiles.Count == 0 ? "" : "已跳过 " + UnavailableFiles.Count + " 项未读取到的资源。") + "\n" + DirectoryPath; } }
+            (UnavailableFiles.Count == 0 ? "" : "已跳过 " + UnavailableFiles.Count + " 项未读取到的资源。") +
+            (UnrecognizedFiles.Count == 0 ? "" : "其中 " + UnrecognizedFiles.Count + " 个原始文件未通过格式校验，已原样保存，未转换。") + "\n" + DirectoryPath; } }
     }
     public static class WalletBatchExport
     {
@@ -54,8 +56,18 @@ namespace AirCard.Core
                     string leaf = assets[i]; log("[" + (i + 1) + "/" + assets.Length + "] 读取 " + leaf);
                     byte[] bytes = readOriginal(leaf);
                     if (bytes == null) { result.UnavailableFiles.Add(leaf); log(leaf + "：未读取到，跳过。"); continue; }
-                    WalletEngine.ValidateArtwork(bytes, leaf);
+                    // Original-resource export is a byte-preserving copy, not an
+                    // image import. Only signature mismatch is non-fatal here;
+                    // read/return/save errors still stop the batch.
+                    bool recognized = true;
+                    try { WalletEngine.ValidateArtwork(bytes, leaf); }
+                    catch (InvalidDataException) { recognized = false; }
                     save(leaf, bytes);
+                    if (!recognized)
+                    {
+                        result.UnrecognizedFiles.Add(leaf);
+                        log(leaf + "：文件头未通过格式校验，已保留原文件名和原始字节（" + bytes.Length + " 字节），未转换。继续读取其他资源。");
+                    }
                 }
             }
             catch (Exception error)

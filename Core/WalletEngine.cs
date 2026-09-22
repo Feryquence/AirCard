@@ -54,7 +54,7 @@ namespace AirCard.Core
             try { files.SaveRecoveryPhase("ReturnRequested"); }
             catch (Exception ex) { errors.Add(ex); }
             try { files.ReturnOriginal(); }
-            catch (Exception ex) { errors.Add(ex); throw new IOException("卡面尚未确认放回手机。请保持恢复记录并重连恢复。", new AggregateException(errors)); }
+            catch (Exception ex) { errors.Add(ex); throw new IOException("卡面尚未确认放回手机。请保留操作记录和备份；程序不会自动接续此操作。", new AggregateException(errors)); }
             if (files.RecoveredExists()) throw new IOException("卡面仍在设备暂存目录，恢复未完成。");
             try { files.SaveRecoveryPhase("Returned"); }
             catch (Exception ex) { errors.Add(ex); }
@@ -100,6 +100,7 @@ namespace AirCard.Core
         }
         internal static readonly string[] BooksPaths = BooksConfiguration.Paths;
         readonly Action<string> log;
+        readonly List<RecoveryRecord> currentRecords = new List<RecoveryRecord>();
         bool syncRuntimePrepared;
         public WalletEngine(Action<string> log) { this.log = log ?? (_ => { }); }
         static string RecordPath(RecoveryRecord r) { return Path.Combine(Storage.RecoveryRoot, r.Token + ".json"); }
@@ -107,27 +108,23 @@ namespace AirCard.Core
         static string Link(RecoveryRecord r) { return "airlift-link-" + r.Token; }
         static string Recovered(RecoveryRecord r) { return "airlift-recovered-" + r.Token; }
         static void Persist(RecoveryRecord r) { Storage.Save(RecordPath(r), r); }
-        public static string[] Pending()
-        {
-            return Directory.Exists(Storage.RecoveryRoot) ? Directory.GetFiles(Storage.RecoveryRoot, "*.json") : new string[0];
-        }
         void PrepareOperation(string udid, ConnectionMode mode)
         {
             if (!syncRuntimePrepared) { log(AppleSyncRuntime.PrepareRequired()); syncRuntimePrepared = true; }
-            // Manual recovery has been removed from the UI. Resolve only this device's
-            // previous transaction before the next explicit write/export request.
-            if (Pending().Length != 0) CompletePending(udid, mode);
+            // Each UI action owns a new engine. Only finish late replies from this
+            // action; never load historical journals when retrying or restarting.
+            if (currentRecords.Count != 0) CompletePending(udid, mode);
         }
         static string CardTarget(string hash)
         {
             if (!CardScanner.ValidHash(hash)) throw new ArgumentException("卡片标识无效。请扫描或填写有效的卡片 hash（不能包含路径分隔符）。");
             return "/var/mobile/Library/Passes/Cards/" + hash + ".pkpass";
         }
-        static RecoveryRecord Snapshot(Afc afc, string udid, string target, string leaf, bool export)
+        RecoveryRecord Snapshot(Afc afc, string udid, string target, string leaf, bool export)
         {
             var r = new RecoveryRecord { Token = Guid.NewGuid().ToString("N"), Udid = udid, Target = target, Leaf = leaf, Export = export, Phase = "Snapshot", Books = new Dictionary<string, string>(), CreatedDirectories = new List<string>() };
             CaptureBooks(afc, r);
-            Persist(r); return r;
+            Persist(r); currentRecords.Add(r); return r;
         }
         static void CaptureBooks(Afc afc, RecoveryRecord r)
         {
@@ -173,7 +170,7 @@ namespace AirCard.Core
             {
                 afc.Remove("airlift-link-" + token); afc.RemoveStagingTree("airlift-src-" + token);
             }
-            if (!keepRecord) File.Delete(RecordPath(r));
+            if (!keepRecord) { File.Delete(RecordPath(r)); currentRecords.Remove(r); }
         }
         public CardApplyResult FlashCard(string udid, ConnectionMode mode, string hash, PreparedSkin skin)
         {
@@ -253,7 +250,7 @@ namespace AirCard.Core
                 {
                     // A failed native operation may still be completing. Preserve staging
                     // and the on-disk Books snapshot for explicit recovery on reconnect.
-                    throw new IOException("写入未完整结束。请重连同一台手机后重试，程序会先自动处理上次操作。记录: " + RecordPath(r), e);
+                    throw new IOException("写入未完整结束。请保留操作记录；本次操作结束后不会自动接续。记录: " + RecordPath(r), e);
                 }
             }
         }
@@ -282,7 +279,7 @@ namespace AirCard.Core
         {
             string target = CardTarget(hash);
             var result = WalletBatchExport.Export(parent, hash,
-                leaf => TryReadCard(udid, mode, target, leaf),
+                leaf => TryReadRawCard(udid, mode, target, leaf),
                 includeCache ? (Func<CardArtwork>)(() => TryReadDisplayedCard(udid, mode, hash)) : null, log);
             // A candidate that did not arrive immediately may arrive later. Check
             // our own staging files before reporting the whole batch complete.
@@ -342,6 +339,14 @@ namespace AirCard.Core
         }
         byte[] TryReadCard(string udid, ConnectionMode mode, string target, string leaf)
         {
+            byte[] bytes = TryReadRawCard(udid, mode, target, leaf);
+            if (bytes != null && leaf != "FrontFace") ValidateArtwork(bytes, leaf);
+            return bytes;
+        }
+        // Raw export preserves the device file regardless of its image encoding.
+        // Return and cleanup must finish before callers may save these bytes.
+        byte[] TryReadRawCard(string udid, ConnectionMode mode, string target, string leaf)
+        {
             PrepareOperation(udid, mode);
             using (var session = DeviceSession.Open(udid, mode)) using (var afc = new Afc(session))
             {
@@ -376,7 +381,6 @@ namespace AirCard.Core
                 catch (Exception e) { failure = failure == null ? e : new AggregateException(failure, e); }
                 if (failure != null) throw new IOException(File.Exists(RecordPath(r)) ? "导出未完成。操作记录: " + RecordPath(r) : "导出未完成，图书同步配置已还原。", failure);
                 if (bytes == null) throw new IOException("未读取到卡面。");
-                if (leaf != "FrontFace") ValidateArtwork(bytes, leaf);
                 return bytes;
             }
         }
@@ -409,9 +413,9 @@ namespace AirCard.Core
         }
         void CompletePending(string udid, ConnectionMode mode)
         {
-            var records = PendingForDevice(udid);
+            var records = CurrentRecordsForDevice(udid);
             if (records.Length == 0) return;
-            if (records.Any(r => r.Phase != "WatchingExport")) log("正在自动处理上次未完成的操作…");
+            if (records.Any(r => r.Phase != "WatchingExport")) log("正在完成本次操作的同步清理…");
             using (var session = DeviceSession.Open(udid, mode)) using (var afc = new Afc(session))
             foreach (var r in records)
             {
@@ -421,7 +425,7 @@ namespace AirCard.Core
                     // No protected-directory stat is needed to check our own Media file.
                     // Leave the watcher intact and let a new explicit operation proceed.
                     if (!afc.ExportStagingExists(Recovered(r))) continue;
-                    log("发现上次请求延迟返回的卡面，先将原文件归位…");
+                    log("发现本次操作延迟返回的卡面，先将原文件归位…");
                     CaptureBooks(afc, r); r.Phase = "ReturnRequested"; Persist(r);
                 }
                 if (!r.Export && IsWalletCacheTarget(r.Target)) log("恢复缓存刷新后的同步状态；不会撤销已经应用的卡面。");
@@ -437,7 +441,7 @@ namespace AirCard.Core
                     new ExportFiles(this, session, afc, r).ReturnOriginal();
                     r.Phase = "Returned"; Persist(r);
                 }
-                Cleanup(afc, r); log("已恢复未完成操作 " + r.Token);
+                Cleanup(afc, r); log("本次操作的同步清理已完成。");
             }
         }
         void WatchUnreadExport(Afc afc, RecoveryRecord r)
@@ -445,11 +449,11 @@ namespace AirCard.Core
             ExportRecovery.WatchUnread(() => afc.ExportStagingExists(Recovered(r)), () => Cleanup(afc, r, true), () => {
                 r.Phase = "WatchingExport"; Persist(r);
             });
-            log(r.Leaf + "：未收到卡面，已还原图书同步配置。保留追踪记录，后续若收到延迟文件会先归位。");
+            log(r.Leaf + "：未收到卡面，已还原图书同步配置。本次操作内继续检查延迟文件；结束后保留记录，不自动接续。");
         }
-        public static RecoveryRecord[] PendingForDevice(string udid)
+        RecoveryRecord[] CurrentRecordsForDevice(string udid)
         {
-            return Pending().Select(Storage.Load<RecoveryRecord>).Where(r => r != null && string.Equals(r.Udid, udid, StringComparison.OrdinalIgnoreCase)).ToArray();
+            return currentRecords.Where(r => string.Equals(r.Udid, udid, StringComparison.OrdinalIgnoreCase)).ToArray();
         }
         static void ValidateRecord(RecoveryRecord r)
         {

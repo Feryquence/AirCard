@@ -70,7 +70,7 @@ class Smoke
     }
     static void TestSyncRuntime()
     {
-        Assert(typeof(WalletEngine).Assembly.GetName().Version.ToString() == "1.1.0.0", "release assembly version is 1.1");
+        Assert(typeof(WalletEngine).Assembly.GetName().Version.ToString() == "1.2.0.0", "release assembly version is 1.2");
         Assert(!typeof(WalletEngine).Assembly.GetManifestResourceNames().Any(name => name.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase)), "release no longer embeds driver installer scripts");
         Assert(AppleSyncRuntime.FromITunesExecutable("\"D:\\Apple Tools\\iTunes.exe\"") == @"D:\Apple Tools\CoreFP.dll", "sync component locates custom desktop iTunes directory");
         Assert(AppleSyncRuntime.FromITunesExecutable(@"\\host\share\iTunes.exe") == null, "sync component rejects network executable registration");
@@ -470,6 +470,23 @@ class Smoke
         byte[] jpeg = {255,216,255,224,0};
         var cacheOnly = WalletBatchExport.Export(Path.Combine(artifacts, "batch-cache-only"), hash, leaf => null, () => new CardArtwork("FrontFace", jpeg));
         Assert(cacheOnly.SavedFiles.Single() == "Wallet 卡面缓存.jpg" && cacheOnly.UnavailableFiles.Count == 11, "JPEG cache-only result remains a successful JPEG export");
+        byte[] unknown = Encoding.ASCII.GetBytes("synthetic unknown original bytes");
+        attempted.Clear(); var warnings = new List<string>();
+        var raw = WalletBatchExport.Export(Path.Combine(artifacts, "batch-raw"), hash, leaf => {
+            attempted.Add(leaf);
+            return leaf == "cardBackgroundCombined@2x.png" ? unknown : leaf == "diffuse@2x.png" ? pdf : leaf == "strip.pdf" ? pdf : null;
+        }, null, warnings.Add);
+        Assert(attempted.SequenceEqual(WalletEngine.BatchArtworkAssets) && raw.SavedFiles.Count == 3, "unrecognized original does not stop later raw resource exports");
+        Assert(File.ReadAllBytes(Path.Combine(raw.DirectoryPath, "cardBackgroundCombined@2x.png")).SequenceEqual(unknown) &&
+            File.ReadAllBytes(Path.Combine(raw.DirectoryPath, "diffuse@2x.png")).SequenceEqual(pdf), "unknown or mismatched encoding preserves exact original names and bytes");
+        Assert(raw.UnrecognizedFiles.SequenceEqual(new[] { "cardBackgroundCombined@2x.png", "diffuse@2x.png" }) && raw.Summary.Contains("2 个原始文件未通过格式校验"), "raw export summary identifies unrecognized content without claiming conversion");
+        Assert(warnings.Count(line => line.Contains("文件头未通过格式校验")) == 2, "raw export logs each nonfatal signature mismatch");
+        Throws(() => new CardArtwork("cardBackgroundCombined@2x.png", unknown), "image consumers still reject unknown originals");
+        readCalls = 0;
+        Throws(() => WalletBatchExport.Export(Path.Combine(artifacts, "batch-raw-interrupted"), hash, leaf => {
+            readCalls++; if (readCalls == 1) return unknown; throw new IOException("return not confirmed");
+        }), "raw export never ignores later return failure");
+        Assert(readCalls == 2, "raw export stops before another device read after return failure");
     }
     static void TestStorage()
     {
@@ -574,10 +591,19 @@ class Smoke
             Storage.Root = Path.Combine(artifacts, "pending-device-tests");
             Storage.Save(Path.Combine(Storage.RecoveryRoot, "phone-a.json"), new RecoveryRecord { Udid = "PHONE-A", Token = "a" });
             Storage.Save(Path.Combine(Storage.RecoveryRoot, "phone-b.json"), new RecoveryRecord { Udid = "phone-b", Token = "b" });
-            Assert(WalletEngine.PendingForDevice("phone-a").Single().Token == "a", "automatic transaction selection matches device case-insensitively");
-            Assert(WalletEngine.PendingForDevice("phone-b").Single().Token == "b", "automatic transaction selection does not touch a different device");
-            Assert(WalletEngine.PendingForDevice("phone-c").Length == 0, "unrelated pending records do not block a new device");
-            Assert(Directory.GetFiles(Storage.RecoveryRoot, "*.json").Length == 2, "selecting pending records does not discard them");
+            File.WriteAllText(Path.Combine(Storage.RecoveryRoot, "malformed-old.json"), "invalid old journal");
+            var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+            var select = typeof(WalletEngine).GetMethod("CurrentRecordsForDevice", flags);
+            var engine = new WalletEngine(null);
+            Func<WalletEngine, string, RecoveryRecord[]> records = (e, device) => (RecoveryRecord[])select.Invoke(e, new object[] { device });
+            Assert(records(engine, "phone-a").Length == 0, "new operation never loads old journals including malformed ones");
+            var current = (List<RecoveryRecord>)typeof(WalletEngine).GetField("currentRecords", flags).GetValue(engine);
+            current.Add(new RecoveryRecord { Udid = "PHONE-A", Token = "current-a", Phase = "WatchingExport" });
+            current.Add(new RecoveryRecord { Udid = "phone-b", Token = "current-b", Phase = "WatchingExport" });
+            Assert(records(engine, "phone-a").Single().Token == "current-a", "late replies in current operation still match device case-insensitively");
+            Assert(records(engine, "phone-b").Single().Token == "current-b" && records(engine, "phone-c").Length == 0, "current cleanup cannot touch another device");
+            Assert(records(new WalletEngine(null), "phone-a").Length == 0, "retry or restart cannot inherit previous operation records");
+            Assert(Directory.GetFiles(Storage.RecoveryRoot, "*.json").Length == 3 && File.ReadAllText(Path.Combine(Storage.RecoveryRoot, "malformed-old.json")) == "invalid old journal", "historical journals are preserved without reading or deleting them");
         }
         finally { Storage.Root = originalRoot; }
     }
