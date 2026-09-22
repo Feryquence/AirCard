@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Threading;
 
 namespace AirCard.Core
 {
@@ -23,9 +25,15 @@ namespace AirCard.Core
             return Path.Combine(Path.GetFullPath(parent), "AirCard_output_" + hash);
         }
         public static WalletBatchExportResult Export(string parent, string hash, Func<string, byte[]> readOriginal,
-            Func<CardArtwork> readCache = null, Action<string> log = null)
+            Func<CardArtwork> readCache = null, Action<string> log = null, IEnumerable<string> selectedOriginalAssets = null, CancellationToken cancellation = default(CancellationToken))
         {
+            cancellation.ThrowIfCancellationRequested();
             if (readOriginal == null) throw new ArgumentNullException(nameof(readOriginal));
+            string[] available = WalletEngine.BatchArtworkAssets;
+            var selected = new HashSet<string>(selectedOriginalAssets ?? available, StringComparer.Ordinal);
+            if (selected.Any(leaf => !available.Contains(leaf))) throw new ArgumentException("导出资源无效。");
+            string[] assets = available.Where(selected.Contains).ToArray();
+            if (assets.Length == 0 && readCache == null) throw new ArgumentException("请至少选择一项导出内容。");
             log = log ?? (_ => { });
             var result = new WalletBatchExportResult { DirectoryPath = OutputDirectory(parent, hash) };
             Directory.CreateDirectory(result.DirectoryPath);
@@ -50,9 +58,9 @@ namespace AirCard.Core
                         save("Wallet 卡面缓存" + cache.Extension, cache.Bytes);
                     }
                 }
-                string[] assets = WalletEngine.BatchArtworkAssets;
                 for (int i = 0; i < assets.Length; i++)
                 {
+                    cancellation.ThrowIfCancellationRequested();
                     string leaf = assets[i]; log("[" + (i + 1) + "/" + assets.Length + "] 读取 " + leaf);
                     byte[] bytes = readOriginal(leaf);
                     if (bytes == null) { result.UnavailableFiles.Add(leaf); log(leaf + "：未读取到，跳过。"); continue; }
@@ -70,12 +78,17 @@ namespace AirCard.Core
                     }
                 }
             }
+            catch (OperationCanceledException error)
+            {
+                throw new OperationCanceledException("已取消导出，保留已保存的 " + result.SavedFiles.Count + " 个文件。目录: " + result.DirectoryPath, error, cancellation);
+            }
             catch (Exception error)
             {
                 // Never continue to the next file after a transport/return/save
                 // failure. Already exported local files remain available.
                 throw new IOException("导出中断，已保存 " + result.SavedFiles.Count + " 个文件。目录: " + result.DirectoryPath, error);
             }
+            if (cancellation.IsCancellationRequested) throw new OperationCanceledException("已取消导出，保留已保存的 " + result.SavedFiles.Count + " 个文件。目录: " + result.DirectoryPath, cancellation);
             return result;
         }
     }

@@ -18,6 +18,7 @@ namespace AirCard
     {
         bool initialized, busy, closeAfterScan;
         CancellationTokenSource scanning;
+        CancellationTokenSource operationCancellation;
         SavedCard currentCard;
         PreparedSkin skin;
         CardArtworkFormat cardFormat;
@@ -45,6 +46,7 @@ namespace AirCard
             ChooseSkinButton.IsEnabled = idle; SaveSkinButton.IsEnabled = idle && skin != null;
             ExportButton.IsEnabled = idle && device && hash;
             CaptureExportLog.IsEnabled = idle;
+            CancelOperationButton.IsEnabled = busy && operationCancellation != null && !operationCancellation.IsCancellationRequested;
             ApplySkinButton.IsEnabled = idle && device && hash && skin != null;
             Progress.Visibility = idle ? Visibility.Collapsed : Visibility.Visible;
         }
@@ -73,16 +75,25 @@ namespace AirCard
             try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(AppleSyncRuntime.ITunesUrl) { UseShellExecute = true }); }
             catch (Exception ex) { Log(ex.ToString()); Notice("无法打开浏览器", "请手动打开：" + AppleSyncRuntime.ITunesUrl); }
         }
-        async Task<bool> Run(string action, Func<Task> operation, Func<string> completedMessage = null, bool notify = false)
+        async Task<bool> Run(string action, Func<Task> operation, Func<string> completedMessage = null, bool notify = false, bool cancellable = false)
         {
             if (busy || scanning != null) return false;
+            operationCancellation = cancellable ? new CancellationTokenSource() : null;
             busy = true; UpdateState(); StatusText.Text = action; Log(action);
-            try { await operation(); StatusText.Text = completedMessage == null ? action + "：完成" : completedMessage(); if (notify) Notice("操作完成", StatusText.Text); return true; }
+            try { await operation(); if (operationCancellation != null && operationCancellation.IsCancellationRequested) throw new OperationCanceledException("操作已取消，已完成的修改或导出文件会保留。"); StatusText.Text = completedMessage == null ? action + "：完成" : completedMessage(); if (notify) Notice("操作完成", StatusText.Text); return true; }
             catch (AppleDriverException ex) { StatusText.Text = action + "：Apple 环境不完整"; Log(ex.ToString()); PromptDriver(ex); return false; }
             catch (CardAppliedException ex) { StatusText.Text = ex.Message; Log(ex.ToString()); Notice("卡面已写入，后续处理未完成", ex.Message); return false; }
             catch (OperationCanceledException ex) { StatusText.Text = ex.Message; Log(ex.Message); return false; }
             catch (Exception ex) { StatusText.Text = action + "：失败，详见日志"; Log(ex.ToString()); if (action == "应用卡面") Notice("应用未完成", ex.Message + "\n详细原因见操作日志。"); return false; }
-            finally { busy = false; UpdateState(); }
+            finally { if (operationCancellation != null) operationCancellation.Dispose(); operationCancellation = null; busy = false; UpdateState(); }
+        }
+        void CancelOperation_Click(object sender, RoutedEventArgs e)
+        {
+            if (operationCancellation == null || operationCancellation.IsCancellationRequested) return;
+            operationCancellation.Cancel();
+            StatusText.Text = "正在取消，等待当前资源归位和同步清理…";
+            Log("已请求取消，不再处理后续资源；正在进行的同步和原文件归位完成后停止。");
+            UpdateState();
         }
         DeviceInfo Selected { get { return DeviceSelect.SelectedItem as DeviceInfo; } }
         ConnectionMode Mode { get { return (ConnectionMode)Math.Max(0, ModeSelect.SelectedIndex); } }
@@ -161,40 +172,49 @@ namespace AirCard
             CardApplyResult result = null;
             await Run("应用卡面", async () => {
                 StatusText.Text = "正在识别卡面格式…";
-                var engine = new WalletEngine(Log);
-                cardFormat = await Task.Run(() => engine.DetectCardFormat(udid, mode, hash));
-                CardFormatInfo.Text = "已读取的原始格式：" + CardFormatMatching.Label(cardFormat);
-                if (cardFormat == CardArtworkFormat.Unknown)
+                var engine = new WalletEngine(Log, operationCancellation.Token);
+                try
                 {
-                    Notice("无法识别卡面格式", "未读到卡片的原始 PNG/PDF 资源，不能根据缓存图片判断格式。\n本次未应用，已保留导入的卡面。");
-                    throw new OperationCanceledException("未识别原始格式，已取消应用。");
+                    cardFormat = await Task.Run(() => engine.DetectCardFormat(udid, mode, hash));
+                    operationCancellation.Token.ThrowIfCancellationRequested();
+                    CardFormatInfo.Text = "已读取的原始格式：" + CardFormatMatching.Label(cardFormat);
+                    if (cardFormat == CardArtworkFormat.Unknown)
+                    {
+                        Notice("无法识别卡面格式", "未读到卡片的原始 PNG/PDF 资源，不能根据缓存图片判断格式。\n本次未应用，已保留导入的卡面。");
+                        throw new OperationCanceledException("未识别原始格式，已取消应用。");
+                    }
+                    var selectedFormat = cardFormat;
+                    if (selectedFormat == CardArtworkFormat.Both)
+                    {
+                        Log("主卡面同时存在 PNG 和 PDF，需要选择要覆盖的格式。");
+                        var choice = (Controls.NoticeWindow)CreateCardFormatNotice();
+                        choice.Owner = this;
+                        if (choice.ShowDialog() != true) throw new OperationCanceledException("已取消应用，保留导入的卡面。");
+                        selectedFormat = choice.SecondarySelected ? CardArtworkFormat.Png : CardArtworkFormat.Pdf;
+                        Log("本次选择覆盖格式: " + CardFormatMatching.Label(selectedFormat));
+                    }
+                    if (!CardFormatMatching.Approve(selectedFormat, selectedSkin.InputFormat, message => Notice("卡面格式不匹配", message, "转换", true)))
+                        throw new OperationCanceledException("已取消应用，保留导入的卡面。");
+                    var target = CardFormatMatching.Target(selectedFormat, selectedSkin.InputFormat);
+                    Log("本次确认写入格式: " + CardFormatMatching.Label(target));
+                    var prepared = await Task.Run(() => selectedSkin.ForTarget(target));
+                    StatusText.Text = "正在应用卡面…";
+                    result = await Task.Run(() => engine.FlashCard(udid, mode, hash, prepared));
                 }
-                var selectedFormat = cardFormat;
-                if (selectedFormat == CardArtworkFormat.Both)
-                {
-                    Log("主卡面同时存在 PNG 和 PDF，需要选择要覆盖的格式。");
-                    var choice = (Controls.NoticeWindow)CreateCardFormatNotice();
-                    choice.Owner = this;
-                    if (choice.ShowDialog() != true) throw new OperationCanceledException("已取消应用，保留导入的卡面。");
-                    selectedFormat = choice.SecondarySelected ? CardArtworkFormat.Png : CardArtworkFormat.Pdf;
-                    Log("本次选择覆盖格式: " + CardFormatMatching.Label(selectedFormat));
-                }
-                if (!CardFormatMatching.Approve(selectedFormat, selectedSkin.InputFormat, message => Notice("卡面格式不匹配", message, "转换", true)))
-                    throw new OperationCanceledException("已取消应用，保留导入的卡面。");
-                var target = CardFormatMatching.Target(selectedFormat, selectedSkin.InputFormat);
-                Log("本次确认写入格式: " + CardFormatMatching.Label(target));
-                var prepared = await Task.Run(() => selectedSkin.ForTarget(target));
-                StatusText.Text = "正在应用卡面…";
-                result = await Task.Run(() => engine.FlashCard(udid, mode, hash, prepared));
-            }, () => result.Summary, notify: true);
+                catch (OperationCanceledException) { await Task.Run(() => engine.FinishCancellation(udid, mode)); throw; }
+            }, () => result.Summary, notify: true, cancellable: true);
         }
         async void Export_Click(object sender, RoutedEventArgs e)
         {
             if (Selected == null || currentCard == null) return; string udid = Selected.Udid, hash = currentCard.Hash; var mode = Mode;
+            var selection = new Controls.ExportSelection(); selection.Window.Owner = this;
+            if (selection.Window.ShowDialog() != true) return;
+            bool includeCache = selection.IncludeCache; string[] selectedAssets = selection.OriginalAssets;
             string folder = Controls.FolderPicker.Select(this); if (folder == null) return;
             bool captureLog = CaptureExportLog.IsChecked == true;
             WalletBatchExportResult result = null;
             await Run("批量导出当前卡面", async () => {
+                var engine = new WalletEngine(Log, operationCancellation.Token);
                 DeviceLogCapture capture = null;
                 string trace = Path.Combine(folder, "aircard-device-sync-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".log");
                 try
@@ -204,8 +224,9 @@ namespace AirCard
                         Log("开始采集手机同步日志: " + trace);
                         capture = await DeviceLogCapture.StartAsync(udid, mode, trace);
                     }
-                    result = await Task.Run(() => new WalletEngine(Log).ExportFolder(udid, mode, hash, folder, true));
+                    result = await Task.Run(() => engine.ExportFolder(udid, mode, hash, folder, includeCache, selectedAssets));
                 }
+                catch (OperationCanceledException) { await Task.Run(() => engine.FinishCancellation(udid, mode)); throw; }
                 finally
                 {
                     if (capture != null)
@@ -219,7 +240,7 @@ namespace AirCard
                         else if (capture.Lines == 0) Log("手机未输出匹配的同步日志；不能据此判断同步正常。");
                     }
                 }
-            }, () => result.Summary, notify: true);
+            }, () => result.Summary, notify: true, cancellable: true);
         }
         void SaveLog_Click(object sender, RoutedEventArgs e)
         {

@@ -11,7 +11,7 @@
   </Window.Resources>
   <Border Style="{StaticResource DeveloperMainWindowFrameStyle}">
     <Grid>
-      <Grid.RowDefinitions><RowDefinition Height="32" /><RowDefinition Height="54" /><RowDefinition Height="*" /><RowDefinition Height="5" /><RowDefinition Height="150" MinHeight="80" /><RowDefinition Height="30" /></Grid.RowDefinitions>
+      <Grid.RowDefinitions><RowDefinition Height="32" /><RowDefinition Height="54" /><RowDefinition Height="*" /><RowDefinition Height="5" /><RowDefinition Height="150" MinHeight="80" /><RowDefinition Height="38" /></Grid.RowDefinitions>
       <DockPanel Style="{StaticResource DeveloperMainWindowCaptionStyle}">
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" shell:WindowChrome.IsHitTestVisibleInChrome="True">
           <Button Style="{StaticResource DeveloperCaptionButtonStyle}" Width="44" Click="Minimize_Click" ToolTip="最小化" AutomationProperties.Name="最小化"><Path Data="M 0,5 L 10,5" Width="10" Height="10" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" /></Button>
@@ -40,7 +40,7 @@
                 <Border Margin="0,18,0,18" Height="1" Background="{DynamicResource EnvironmentToolWindowBorder}" />
                 <TextBlock Text="导出当前卡面" Style="{StaticResource SectionTitle}" />
                 <TextBlock Text="批量导出 Wallet 卡面缓存及可读取的原始资源，保留原始文件名。" Style="{StaticResource Hint}" Margin="0,0,0,10" />
-                <TextBlock Text="选择文件夹后，自动保存到 AirCard_output_卡片Hash 子目录。" Style="{StaticResource Hint}" Margin="0,0,0,10" />
+                <TextBlock Text="勾选导出内容并选择文件夹后，保存到 AirCard_output_卡片Hash 子目录。" Style="{StaticResource Hint}" Margin="0,0,0,10" />
                 <Button x:Name="ExportButton" Content="导出全部卡面文件…" Style="{StaticResource ActionButton}" Click="Export_Click" HorizontalAlignment="Left" />
                 <CheckBox x:Name="CaptureExportLog" Content="采集导出诊断日志" Foreground="{DynamicResource EnvironmentForeground}" Margin="0,12,0,0" ToolTip="导出期间读取手机同步日志，单独保存到所选文件夹；日志可能包含设备或文件标识。" />
                 <TextBlock Text="实验性读取：临时移出图片并放回。完成前请保持手机连接。" Style="{StaticResource Hint}" FontSize="11" Margin="0,9,0,0" />
@@ -77,8 +77,10 @@
           <TextBox x:Name="LogBox" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" FontFamily="Consolas, Microsoft YaHei UI" FontSize="11" BorderThickness="0" Padding="8,4" AutomationProperties.Name="操作日志" />
         </DockPanel>
       </Border>
-      <Grid Grid.Row="5" Margin="12,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="120" /></Grid.ColumnDefinitions>
-        <TextBlock x:Name="StatusText" Text="就绪" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" /><ProgressBar x:Name="Progress" Grid.Column="1" Height="3" VerticalAlignment="Center" Visibility="Collapsed" IsIndeterminate="True" />
+      <Grid Grid.Row="5" Margin="12,0"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="120" /></Grid.ColumnDefinitions>
+        <TextBlock x:Name="StatusText" Text="就绪" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+        <Button x:Name="CancelOperationButton" Grid.Column="1" Content="取消操作" Height="32" Padding="10,0" Margin="10,0,14,0" Click="CancelOperation_Click" ToolTip="停止后续资源读写；当前同步和原文件归位完成后退出。" />
+        <ProgressBar x:Name="Progress" Grid.Column="2" Height="3" VerticalAlignment="Center" Visibility="Collapsed" IsIndeterminate="True" />
       </Grid>
     </Grid>
   </Border>

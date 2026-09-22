@@ -487,6 +487,39 @@ class Smoke
             readCalls++; if (readCalls == 1) return unknown; throw new IOException("return not confirmed");
         }), "raw export never ignores later return failure");
         Assert(readCalls == 2, "raw export stops before another device read after return failure");
+        attempted.Clear();
+        var subset = WalletBatchExport.Export(Path.Combine(artifacts, "batch-subset"), hash, leaf => { attempted.Add(leaf); return png; },
+            selectedOriginalAssets: new[] { "strip@2x.png", "diffuse@3x.png", "strip@2x.png" });
+        Assert(attempted.SequenceEqual(new[] { "diffuse@3x.png", "strip@2x.png" }) && subset.SavedFiles.Count == 2 && subset.UnavailableFiles.Count == 0, "selection reads only checked resources once in canonical order");
+        readCalls = 0;
+        var selectedCache = WalletBatchExport.Export(Path.Combine(artifacts, "batch-selected-cache"), hash, leaf => { readCalls++; return png; },
+            () => new CardArtwork("FrontFace", png), selectedOriginalAssets: new string[0]);
+        Assert(readCalls == 0 && selectedCache.SavedFiles.Single() == "Wallet 卡面缓存.png", "cache-only selection never reads original resources");
+        string invalidSelection = Path.Combine(artifacts, "batch-invalid-selection");
+        Throws(() => WalletBatchExport.Export(invalidSelection, hash, leaf => { readCalls++; return png; }, selectedOriginalAssets: new string[0]), "empty selection is rejected");
+        Throws(() => WalletBatchExport.Export(invalidSelection, hash, leaf => { readCalls++; return png; }, selectedOriginalAssets: new[] { "../unknown.png" }), "unknown selection is rejected");
+        Assert(!Directory.Exists(invalidSelection) && readCalls == 0, "invalid selection creates no output and starts no reads");
+        using (var cancel = new CancellationTokenSource())
+        {
+            int cancelledReads = 0;
+            string cancelledParent = Path.Combine(artifacts, "batch-cancelled");
+            try
+            {
+                WalletBatchExport.Export(cancelledParent, hash, leaf => { cancelledReads++; cancel.Cancel(); return png; }, cancellation: cancel.Token);
+                throw new Exception("Cancelled batch reported success");
+            }
+            catch (OperationCanceledException e) { Assert(e.Message.Contains("保留已保存的 1 个文件"), "cancelled export reports partial output"); }
+            Assert(cancelledReads == 1 && File.ReadAllBytes(Path.Combine(WalletBatchExport.OutputDirectory(cancelledParent, hash), "cardBackgroundCombined@3x.png")).SequenceEqual(png), "cancel saves completed current resource and prevents next read");
+            string beforeStart = Path.Combine(artifacts, "batch-pre-cancelled");
+            try { WalletBatchExport.Export(beforeStart, hash, leaf => { cancelledReads++; return png; }, cancellation: cancel.Token); throw new Exception("Pre-cancelled batch reported success"); }
+            catch (OperationCanceledException) { }
+            Assert(!Directory.Exists(beforeStart) && cancelledReads == 1, "pre-cancel prevents filesystem and device work");
+        }
+        using (var cancel = new CancellationTokenSource())
+        {
+            try { WalletBatchExport.Export(Path.Combine(artifacts, "batch-cancel-failure"), hash, leaf => { cancel.Cancel(); throw new IOException("return failed"); }, cancellation: cancel.Token); throw new Exception("Return failure ignored"); }
+            catch (IOException e) { Assert(e.InnerException.Message == "return failed", "device return failure is not hidden by concurrent cancellation"); }
+        }
     }
     static void TestStorage()
     {
@@ -554,10 +587,18 @@ class Smoke
         Assert(((Button)window.FindName("ApplySkinButton")).IsEnabled && (CardArtworkFormat)typeof(MainWindow).GetField("cardFormat", flags).GetValue(window) == CardArtworkFormat.Unknown,
             "apply is available before format identification when a local preview and scanned card exist");
         var run = typeof(MainWindow).GetMethod("Run", flags);
-        var task = (System.Threading.Tasks.Task<bool>)run.Invoke(window, new object[] { "offline export", new Func<System.Threading.Tasks.Task>(() => System.Threading.Tasks.Task.CompletedTask), null, false });
+        var task = (System.Threading.Tasks.Task<bool>)run.Invoke(window, new object[] { "offline export", new Func<System.Threading.Tasks.Task>(() => System.Threading.Tasks.Task.CompletedTask), null, false, false });
         Assert(task.GetAwaiter().GetResult() && export.IsEnabled && ((TextBox)window.FindName("HashBox")).Text == scanned.Hash, "completed operation retains scanned card for another operation");
-        task = (System.Threading.Tasks.Task<bool>)run.Invoke(window, new object[] { "offline export failure", new Func<System.Threading.Tasks.Task>(() => { throw new IOException("offline failure"); }), null, false });
+        task = (System.Threading.Tasks.Task<bool>)run.Invoke(window, new object[] { "offline export failure", new Func<System.Threading.Tasks.Task>(() => { throw new IOException("offline failure"); }), null, false, false });
         Assert(!task.GetAwaiter().GetResult() && export.IsEnabled && ((TextBox)window.FindName("HashBox")).Text == scanned.Hash, "failed operation also retains the scanned card");
+        task = (System.Threading.Tasks.Task<bool>)run.Invoke(window, new object[] { "offline cancel", new Func<System.Threading.Tasks.Task>(() => {
+            var cancelButton = (Button)window.FindName("CancelOperationButton");
+            Assert(cancelButton.IsEnabled, "cancellable operation enables cancellation control");
+            typeof(MainWindow).GetMethod("CancelOperation_Click", flags).Invoke(window, new object[] { null, new RoutedEventArgs() });
+            Assert(!cancelButton.IsEnabled && ((TextBlock)window.FindName("StatusText")).Text.Contains("正在取消"), "cancel immediately updates UI and prevents repeated clicks");
+            return System.Threading.Tasks.Task.CompletedTask;
+        }), null, false, true });
+        Assert(!task.GetAwaiter().GetResult() && !((Button)window.FindName("CancelOperationButton")).IsEnabled && export.IsEnabled, "cancellation finishes without success and restores idle controls");
         selected.ItemsSource = new[] { new DeviceInfo { Udid = "other-device", Name = "Other", Transport = "USB" }, new DeviceInfo { Udid = scanned.Udid, Name = "Test", Transport = "USB" } }; selected.SelectedIndex = 0;
         Assert(!export.IsEnabled && ((TextBox)window.FindName("HashBox")).Text == scanned.Hash, "retained identifier cannot operate on another device");
         Assert(!((Button)window.FindName("ApplySkinButton")).IsEnabled && ((Button)window.FindName("ChooseSkinButton")).IsEnabled, "another device cannot use the old scan but can still load a local preview");
@@ -581,6 +622,25 @@ class Smoke
         var noticeBitmap = new RenderTargetBitmap((int)Math.Ceiling(size.Width), (int)Math.Ceiling(size.Height), 96, 96, PixelFormats.Pbgra32); noticeBitmap.Render(noticeContent);
         var noticeEncoder = new PngBitmapEncoder(); noticeEncoder.Frames.Add(BitmapFrame.Create(noticeBitmap));
         using (var stream = File.Create(Path.Combine(artifacts, "driver-notice.png"))) noticeEncoder.Save(stream);
+        var selectionType = typeof(MainWindow).Assembly.GetType("AirCard.Controls.ExportSelection");
+        var selection = Activator.CreateInstance(selectionType, true);
+        var choices = (List<CheckBox>)selectionType.GetField("choices", flags).GetValue(selection);
+        var selectionWindow = (Window)selectionType.GetProperty("Window", flags).GetValue(selection);
+        var accept = (Button)selectionWindow.GetType().GetProperty("AcceptButton", flags).GetValue(selectionWindow);
+        Assert(choices.Count == 12 && choices.All(c => c.IsChecked == true) && accept.IsEnabled, "export checkbox list defaults to all twelve resources");
+        foreach (var choice in choices) choice.IsChecked = false;
+        Assert(!accept.IsEnabled, "empty checkbox selection disables continuation");
+        choices[0].IsChecked = true;
+        Assert(accept.IsEnabled && (bool)selectionType.GetProperty("IncludeCache", flags).GetValue(selection) && ((string[])selectionType.GetProperty("OriginalAssets", flags).GetValue(selection)).Length == 0, "checkbox list supports cache-only selection");
+        choices[0].IsChecked = false; choices[2].IsChecked = true;
+        Assert(!(bool)selectionType.GetProperty("IncludeCache", flags).GetValue(selection) && ((string[])selectionType.GetProperty("OriginalAssets", flags).GetValue(selection)).Single() == WalletEngine.BatchArtworkAssets[1], "checkbox list keeps original resource selection separate from cache");
+        foreach (var choice in choices) choice.IsChecked = true;
+        var selectionContent = (FrameworkElement)selectionWindow.Content;
+        selectionContent.Measure(new System.Windows.Size(selectionWindow.Width, double.PositiveInfinity)); var selectionSize = selectionContent.DesiredSize;
+        selectionContent.Arrange(new Rect(0, 0, selectionSize.Width, selectionSize.Height)); selectionContent.UpdateLayout();
+        var selectionBitmap = new RenderTargetBitmap((int)Math.Ceiling(selectionSize.Width), (int)Math.Ceiling(selectionSize.Height), 96, 96, PixelFormats.Pbgra32); selectionBitmap.Render(selectionContent);
+        var selectionEncoder = new PngBitmapEncoder(); selectionEncoder.Frames.Add(BitmapFrame.Create(selectionBitmap));
+        using (var stream = File.Create(Path.Combine(artifacts, "export-selection.png"))) selectionEncoder.Save(stream);
         window.Close(); app.Shutdown();
     }
     static void TestPendingDevices()

@@ -14,9 +14,10 @@ namespace AirCard.Controls
     internal sealed class NoticeWindow : Window
     {
         internal bool SecondarySelected { get; private set; }
-        internal NoticeWindow(string title, string message, string accept = "确定", bool cancel = false, string secondary = null)
+        internal Button AcceptButton { get; private set; }
+        internal NoticeWindow(string title, string message, string accept = "确定", bool cancel = false, string secondary = null, UIElement extraContent = null)
         {
-            Title = title; Width = secondary == null ? 460 : 560; SizeToContent = SizeToContent.Height;
+            Title = title; Width = extraContent != null ? 580 : secondary == null ? 460 : 560; SizeToContent = SizeToContent.Height;
             ResizeMode = ResizeMode.NoResize; WindowStyle = WindowStyle.None;
             WindowStartupLocation = WindowStartupLocation.CenterOwner; ShowInTaskbar = false;
             Style = (Style)Application.Current.FindResource(typeof(Window));
@@ -42,13 +43,16 @@ namespace AirCard.Controls
             caption.Children.Add(heading); layout.Children.Add(caption);
 
             var body = new StackPanel { Margin = new Thickness(20) };
+            var content = new StackPanel();
+            content.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, Foreground = Brushes.White, LineHeight = 21 });
+            if (extraContent != null) content.Children.Add(extraContent);
             body.Children.Add(new ScrollViewer {
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
                 MaxHeight = Math.Max(100, Math.Min(440, SystemParameters.WorkArea.Height - 180)),
-                Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, Foreground = Brushes.White, LineHeight = 21 }
+                Content = content
             });
             var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 20, 0, 0) };
-            var okay = ActionButton(accept); okay.IsDefault = true;
+            var okay = AcceptButton = ActionButton(accept); okay.IsDefault = true;
             okay.Click += (s, e) => DialogResult = true; buttons.Children.Add(okay);
             if (secondary != null)
             {

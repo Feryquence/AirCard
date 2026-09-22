@@ -100,9 +100,15 @@ namespace AirCard.Core
         }
         internal static readonly string[] BooksPaths = BooksConfiguration.Paths;
         readonly Action<string> log;
+        readonly CancellationToken cancellation;
         readonly List<RecoveryRecord> currentRecords = new List<RecoveryRecord>();
         bool syncRuntimePrepared;
-        public WalletEngine(Action<string> log) { this.log = log ?? (_ => { }); }
+        public WalletEngine(Action<string> log, CancellationToken cancellation = default(CancellationToken)) { this.log = log ?? (_ => { }); this.cancellation = cancellation; }
+        internal void FinishCancellation(string udid, ConnectionMode mode)
+        {
+            // Cancellation never interrupts returning a file already moved by this action.
+            if (cancellation.IsCancellationRequested && currentRecords.Count != 0) CompletePending(udid, mode);
+        }
         static string RecordPath(RecoveryRecord r) { return Path.Combine(Storage.RecoveryRoot, r.Token + ".json"); }
         static string Source(RecoveryRecord r) { return "airlift-src-" + r.Token; }
         static string Link(RecoveryRecord r) { return "airlift-link-" + r.Token; }
@@ -110,10 +116,12 @@ namespace AirCard.Core
         static void Persist(RecoveryRecord r) { Storage.Save(RecordPath(r), r); }
         void PrepareOperation(string udid, ConnectionMode mode)
         {
+            cancellation.ThrowIfCancellationRequested();
             if (!syncRuntimePrepared) { log(AppleSyncRuntime.PrepareRequired()); syncRuntimePrepared = true; }
             // Each UI action owns a new engine. Only finish late replies from this
             // action; never load historical journals when retrying or restarting.
             if (currentRecords.Count != 0) CompletePending(udid, mode);
+            cancellation.ThrowIfCancellationRequested();
         }
         static string CardTarget(string hash)
         {
@@ -189,6 +197,7 @@ namespace AirCard.Core
                         new[] { "FrontFace", "PlaceHolder", "Preview" }.Select(n => new KeyValuePair<string, byte[]>(n, System.Text.Encoding.ASCII.GetBytes("corrupted"))).ToArray(), true);
                     if (cache.HasWarnings) result.CacheWarnings.Add(extension + ": " + string.Join(", ", cache.PendingAssets));
                 }
+                catch (OperationCanceledException) { throw new OperationCanceledException("卡面已写入；已取消后续缓存刷新，已完成的修改会保留。请重新打开钱包。", cancellation); }
                 catch (Exception error) { throw new CardAppliedException(error); }
             }
             log(result.Summary); return result;
@@ -275,12 +284,12 @@ namespace AirCard.Core
             var artwork = ReadCard(udid, mode, hash, leaf);
             Storage.AtomicWrite(destination, artwork.Bytes); log("已保存卡面原文件: " + destination);
         }
-        public WalletBatchExportResult ExportFolder(string udid, ConnectionMode mode, string hash, string parent, bool includeCache)
+        public WalletBatchExportResult ExportFolder(string udid, ConnectionMode mode, string hash, string parent, bool includeCache, IEnumerable<string> selectedOriginalAssets = null)
         {
             string target = CardTarget(hash);
             var result = WalletBatchExport.Export(parent, hash,
                 leaf => TryReadRawCard(udid, mode, target, leaf),
-                includeCache ? (Func<CardArtwork>)(() => TryReadDisplayedCard(udid, mode, hash)) : null, log);
+                includeCache ? (Func<CardArtwork>)(() => TryReadDisplayedCard(udid, mode, hash)) : null, log, selectedOriginalAssets, cancellation);
             // A candidate that did not arrive immediately may arrive later. Check
             // our own staging files before reporting the whole batch complete.
             PrepareOperation(udid, mode);
