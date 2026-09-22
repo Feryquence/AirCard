@@ -40,6 +40,14 @@ namespace AirCard.Core
             }
         }
         public static void Check(int code, string operation) { if (code != 0) throw new IOException(operation + " 失败 (0x" + code.ToString("X8") + ")。"); }
+        internal static string DriverVersions()
+        {
+            string path = EnsureLoaded();
+            return "Apple 驱动: " + string.Join("；", new[] { MD, AT }.Select(name => {
+                try { return name + " " + System.Diagnostics.FileVersionInfo.GetVersionInfo(Path.Combine(path, name)).FileVersion; }
+                catch (Exception) { return name + " <版本不可用>"; }
+            }));
+        }
         [DllImport(CF, CallingConvention = CallingConvention.Cdecl)] internal static extern IntPtr CFStringCreateWithCString(IntPtr allocator, byte[] text, uint encoding);
         [DllImport(CF, CallingConvention = CallingConvention.Cdecl)] internal static extern IntPtr CFStringGetLength(IntPtr value);
         [DllImport(CF, CallingConvention = CallingConvention.Cdecl)] internal static extern IntPtr CFStringGetMaximumSizeForEncoding(IntPtr length, uint encoding);

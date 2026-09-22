@@ -48,7 +48,17 @@ class NativeSmoke
                 var handle = cf.GetProperty("Handle", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(textValue);
                 if (!native.GetMethod("Text", flags).Invoke(null, new[] {handle}).Equals("卡面 / USB")) throw new Exception("CF UTF-8 ABI mismatch.");
             }
-            Console.WriteLine("PASS: " + count + " Apple exports found; native binary/XML plist and UTF-8 roundtrips passed. No device operations."); return 0;
+            foreach (object scalar in new object[] { -1, 42, "同步拒绝" })
+            {
+                var diagnostic = cf.GetMethod("From", flags).Invoke(null, new[] { scalar });
+                using ((IDisposable)diagnostic)
+                {
+                    var handle = cf.GetProperty("Handle", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(diagnostic);
+                    var xml = (byte[])native.GetMethod("Serialize", flags).Invoke(null, new object[] {handle, 100});
+                    if (SyncDiagnostics.Scalar(xml) != scalar.ToString()) throw new Exception("CF diagnostic scalar mismatch.");
+                }
+            }
+            Console.WriteLine("PASS: " + count + " Apple exports found; native binary/XML plist, diagnostic scalars and UTF-8 roundtrips passed. No device operations."); return 0;
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
     }

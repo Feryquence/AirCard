@@ -26,7 +26,7 @@ class Smoke
         try
         {
             artifacts = args[0]; Storage.Root = Path.Combine(artifacts, "state");
-            TestPlist(); TestZip(); TestArtwork(); TestPdfImport(); TestCardFormatMatching(); TestStagingProbe(); TestWalletFace(); TestBatchExport(); TestScanner(); TestSingleCardScan(); TestRecovery(); TestBooksConfiguration(); TestCacheResults(); TestStorage(); TestPendingDevices(); TestDriverInstaller(); TestWindow();
+            TestPlist(); TestSyncDiagnostics(); TestZip(); TestArtwork(); TestPdfImport(); TestCardFormatMatching(); TestStagingProbe(); TestWalletFace(); TestBatchExport(); TestScanner(); TestSingleCardScan(); TestRecovery(); TestBooksConfiguration(); TestCacheResults(); TestStorage(); TestPendingDevices(); TestDriverInstaller(); TestWindow();
             string result = "PASS: " + checks + " assertions; no iPhone operations performed.";
             Console.WriteLine(result); File.WriteAllText(Path.Combine(artifacts, "results.txt"), result); return 0;
         }
@@ -42,6 +42,31 @@ class Smoke
         Assert(((Dictionary<string, object>)((object[])output["items"])[1])["x"].Equals("y"), "plist nesting");
         Throws(() => Plist.Read(Encoding.UTF8.GetBytes("<plist><dict><key>x</key></dict></plist>")), "malformed plist rejected");
         Throws(() => Plist.Read(Encoding.UTF8.GetBytes("<!DOCTYPE plist [<!ENTITY evil SYSTEM 'file:///secret'>]><plist><string>&evil;</string></plist>")), "external entity rejected");
+    }
+    static void TestSyncDiagnostics()
+    {
+        Assert(SyncDiagnostics.Scalar(Encoding.UTF8.GetBytes("<plist><integer>18446744073709551615</integer></plist>")) == "18446744073709551615", "sync unsigned error code preserved");
+        Assert(SyncDiagnostics.Scalar(Plist.Write(-1)) == "-1", "sync negative error code preserved");
+        Assert(SyncDiagnostics.Scalar(Plist.Write("同步拒绝")) == "同步拒绝", "sync unicode reason");
+        Assert(SyncDiagnostics.Scalar(Plist.Write(Plist.Dict("private", "manifest"))) == null, "sync nested data not dumped");
+        Assert(SyncDiagnostics.Scalar(Plist.Write(new byte[] { 1, 2 })) == null, "sync binary data not dumped");
+        Throws(() => SyncDiagnostics.Scalar(Encoding.UTF8.GetBytes("<!DOCTYPE plist [<!ENTITY evil SYSTEM 'file:///secret'>]><plist><string>&evil;</string></plist>")), "sync external entity not expanded");
+        var queried = new List<string>();
+        var failure = SyncDiagnostics.Failure("ReadyForSync", "SyncFailed", key => {
+            queried.Add(key);
+            if (key == "ErrorCode") return "18446744073709551615";
+            if (key == "Reason") return "first\nsecond\tthird";
+            return null;
+        });
+        Assert(failure.Message.Contains("ReadyForSync") && failure.Message.Contains("SyncFailed"), "sync reports exact failed stage");
+        Assert(failure.Message.Contains("ErrorCode=18446744073709551615"), "sync displays full error code");
+        Assert(failure.Message.Contains("Reason=first second third"), "sync detail cannot inject log lines");
+        Assert(queried.SequenceEqual(new[] { "ErrorCode", "ErrorDomain", "ErrorDescription", "Error", "Reason" }), "sync only reads known diagnostic keys");
+        Assert(SyncDiagnostics.Failure("SyncAllowed", "SyncFinished", key => null).Message.Contains("设备未提供"), "sync missing details explicit");
+        var broken = SyncDiagnostics.Failure("AssetManifest", "SyncFailed", key => { throw new IOException("bad plist"); });
+        Assert(broken.Message.Contains("SyncFailed") && broken.Message.Contains("ErrorCode=<无法读取>"), "bad diagnostic field preserves original sync failure");
+        string longDetail = SyncDiagnostics.Failure("ReadyForSync", "SyncFailed", key => key == "Reason" ? new string('x', 600) : null).Message;
+        Assert(longDetail.Contains(new string('x', 512) + "…") && !longDetail.Contains(new string('x', 513)), "sync reason length bounded");
     }
     static void TestZip()
     {

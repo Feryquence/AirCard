@@ -113,6 +113,8 @@ namespace AirCard
                 DriverInfo.Text = "Apple 驱动已加载。";
                 DeviceSelect.ItemsSource = list; DeviceSelect.SelectedItem = list.FirstOrDefault(d => d.Udid == old) ?? list.FirstOrDefault();
                 Log(list.Count == 0 ? "未发现设备。请连接并解锁 iPhone，信任此电脑。" : "发现 " + list.Count + " 台设备。");
+                foreach (var device in list) Log("设备环境: " + device.Product + " · iOS " + device.Version + " · " + device.Transport);
+                if (list.Count > 0) Log(Native.DriverVersions());
             });
         }
         async void Refresh_Click(object sender, RoutedEventArgs e) { await RefreshDevices(); }
