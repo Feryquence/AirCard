@@ -7,7 +7,8 @@ namespace AirCard.Core
     internal sealed class AfcException : IOException
     {
         internal int Code { get; private set; }
-        internal AfcException(int code, string path) : base("读取文件信息 " + path + " 失败 (0x" + code.ToString("X8") + ")。") { Code = code; }
+        internal AfcException(int code, string path) : this(code, path, "读取文件信息") { }
+        internal AfcException(int code, string path, string operation) : base(operation + " " + path + " 失败 (0x" + code.ToString("X8") + ")。") { Code = code; }
     }
     // All paths are relative to /var/mobile/Media. Never recursively follow links.
     internal sealed class Afc : IDisposable
@@ -109,7 +110,8 @@ namespace AirCard.Core
         internal void Remove(string path) { if (Exists(path)) Native.Check(Native.AFCRemovePath(connection, Native.Utf8(path)), "清理 " + path); }
         internal string[] List(string path)
         {
-            IntPtr directory; Native.Check(Native.AFCDirectoryOpen(connection, Native.Utf8(path), out directory), "列举目录 " + path);
+            IntPtr directory; int code = Native.AFCDirectoryOpen(connection, Native.Utf8(path), out directory);
+            if (code != 0) throw new AfcException(code, path, "列举目录");
             var names = new List<string>();
             try
             {

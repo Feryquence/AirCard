@@ -25,11 +25,13 @@ namespace AirCard.Core
             return Path.Combine(Path.GetFullPath(parent), "AirCard_output_" + hash);
         }
         public static WalletBatchExportResult Export(string parent, string hash, Func<string, byte[]> readOriginal,
-            Func<CardArtwork> readCache = null, Action<string> log = null, IEnumerable<string> selectedOriginalAssets = null, CancellationToken cancellation = default(CancellationToken))
+            Func<CardArtwork> readCache = null, Action<string> log = null, IEnumerable<string> selectedOriginalAssets = null, CancellationToken cancellation = default(CancellationToken), IEnumerable<string> availableAssets = null)
         {
             cancellation.ThrowIfCancellationRequested();
             if (readOriginal == null) throw new ArgumentNullException(nameof(readOriginal));
-            string[] available = WalletEngine.BatchArtworkAssets;
+            string[] available = (availableAssets ?? WalletEngine.BatchArtworkAssets).ToArray();
+            if (available.Any(n => !CardResourceCatalog.IsArtworkPath(n)) || available.Distinct(StringComparer.OrdinalIgnoreCase).Count() != available.Length)
+                throw new ArgumentException("资源清单包含不安全或重复的文件名。");
             var selected = new HashSet<string>(selectedOriginalAssets ?? available, StringComparer.Ordinal);
             if (selected.Any(leaf => !available.Contains(leaf))) throw new ArgumentException("导出资源无效。");
             string[] assets = available.Where(selected.Contains).ToArray();
@@ -68,7 +70,7 @@ namespace AirCard.Core
                     // image import. Only signature mismatch is non-fatal here;
                     // read/return/save errors still stop the batch.
                     bool recognized = true;
-                    try { WalletEngine.ValidateArtwork(bytes, leaf); }
+                    try { if (leaf.EndsWith(".png", StringComparison.OrdinalIgnoreCase) || leaf.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)) WalletEngine.ValidateArtwork(bytes, leaf); }
                     catch (InvalidDataException) { recognized = false; }
                     save(leaf, bytes);
                     if (!recognized)

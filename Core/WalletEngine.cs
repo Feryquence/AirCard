@@ -284,12 +284,60 @@ namespace AirCard.Core
             var artwork = ReadCard(udid, mode, hash, leaf);
             Storage.AtomicWrite(destination, artwork.Bytes); log("已保存卡面原文件: " + destination);
         }
-        public WalletBatchExportResult ExportFolder(string udid, ConnectionMode mode, string hash, string parent, bool includeCache, IEnumerable<string> selectedOriginalAssets = null)
+        public CardResourceCatalog DiscoverResources(string udid, ConnectionMode mode, string hash)
         {
             string target = CardTarget(hash);
+            PrepareOperation(udid, mode);
+            var catalog = new CardResourceCatalog { Udid = udid, Hash = hash };
+            bool listed = false;
+            using (var session = DeviceSession.Open(udid, mode)) using (var afc = new Afc(session))
+            {
+                try
+                {
+                    catalog.AddLocal(afc.List("../" + target.Substring("/var/mobile/".Length)));
+                    listed = true; log("已读取卡片目录中的顶层图片名称。");
+                }
+                catch (AfcException error) when (error.Code == 8 || error.Code == 10)
+                { log("设备不允许直接列举卡片目录，改为读取 manifest.json 资源清单。"); }
+            }
+            byte[] manifest = TryReadRawCard(udid, mode, target, "manifest.json");
+            bool parsed = false;
+            if (manifest != null)
+            {
+                try { catalog.AddLocal(CardResourceCatalog.ManifestAssets(manifest)); parsed = true; }
+                catch (InvalidDataException error) { log("未使用资源清单: " + error.Message); }
+            }
+            catalog.Description = listed ? "来自卡片目录及可读取的资源清单。" : parsed ? "来自卡片 manifest.json 清单；清单不一定包含后续添加的文件。" : "未读取到可用的资源清单，目前只能选择 Wallet 卡面缓存。";
+            foreach (string name in catalog.LocalAssets.Where(n => n.EndsWith(".urls", StringComparison.OrdinalIgnoreCase)).ToArray())
+            {
+                byte[] bytes = TryReadRawCard(udid, mode, target, name);
+                if (bytes == null) continue;
+                try { catalog.AddRemote(CardResourceCatalog.ParseUrls(name, bytes)); }
+                catch (InvalidDataException error) { log(name + "：" + error.Message + " 已跳过此索引。"); }
+            }
+            PrepareOperation(udid, mode);
+            log("发现 " + catalog.LocalAssets.Count + " 个设备资源、" + catalog.RemoteAssets.Count + " 个远程图片引用；尚未下载远程图片。");
+            return catalog;
+        }
+        public WalletBatchExportResult ExportFolder(string udid, ConnectionMode mode, string hash, string parent, bool includeCache, IEnumerable<string> selectedOriginalAssets = null, CardResourceCatalog catalog = null, IEnumerable<string> selectedRemoteAssets = null)
+        {
+            string target = CardTarget(hash);
+            if (catalog != null && (catalog.Udid != udid || catalog.Hash != hash)) throw new ArgumentException("资源清单不属于当前设备或卡片，请重新读取。");
+            var remoteSelection = new HashSet<string>(selectedRemoteAssets ?? new string[0], StringComparer.Ordinal);
+            if (remoteSelection.Any(n => catalog == null || !catalog.RemoteAssets.ContainsKey(n))) throw new ArgumentException("远程图片选择无效。");
+            var selected = catalog == null ? selectedOriginalAssets : (selectedOriginalAssets ?? catalog.DeviceAssets).Concat(remoteSelection);
             var result = WalletBatchExport.Export(parent, hash,
-                leaf => TryReadRawCard(udid, mode, target, leaf),
-                includeCache ? (Func<CardArtwork>)(() => TryReadDisplayedCard(udid, mode, hash)) : null, log, selectedOriginalAssets, cancellation);
+                leaf => {
+                    RemoteArtwork remote;
+                    if (remoteSelection.Contains(leaf) && catalog.RemoteAssets.TryGetValue(leaf, out remote))
+                    {
+                        log("从 Apple 下载原图: " + leaf + "（" + remote.Size + " 字节）");
+                        byte[] bytes = remote.Download(cancellation);
+                        log(leaf + "：大小和 SHA-1 校验通过。"); return bytes;
+                    }
+                    return TryReadRawCard(udid, mode, target, leaf);
+                },
+                includeCache ? (Func<CardArtwork>)(() => TryReadDisplayedCard(udid, mode, hash)) : null, log, selected, cancellation, catalog == null ? null : catalog.Assets);
             // A candidate that did not arrive immediately may arrive later. Check
             // our own staging files before reporting the whole batch complete.
             PrepareOperation(udid, mode);
@@ -418,7 +466,7 @@ namespace AirCard.Core
             if (IsWalletCacheTarget(target)) return leaf == "FrontFace";
             const string prefix = "/var/mobile/Library/Passes/Cards/";
             return target != null && target.StartsWith(prefix, StringComparison.Ordinal) && target.EndsWith(".pkpass", StringComparison.Ordinal)
-                && CardScanner.ValidHash(target.Substring(prefix.Length, target.Length - prefix.Length - ".pkpass".Length)) && ArtworkAssets.Contains(leaf);
+                && CardScanner.ValidHash(target.Substring(prefix.Length, target.Length - prefix.Length - ".pkpass".Length)) && (leaf == "manifest.json" || CardResourceCatalog.IsResourcePath(leaf));
         }
         void CompletePending(string udid, ConnectionMode mode)
         {

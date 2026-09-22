@@ -26,7 +26,7 @@ class Smoke
         try
         {
             artifacts = args[0]; Storage.Root = Path.Combine(artifacts, "state");
-            TestPlist(); TestSyncDiagnostics(); TestSyncRuntime(); TestSyncLogFilter(); TestZip(); TestArtwork(); TestPdfImport(); TestCardFormatMatching(); TestStagingProbe(); TestWalletFace(); TestBatchExport(); TestScanner(); TestSingleCardScan(); TestRecovery(); TestBooksConfiguration(); TestCacheResults(); TestStorage(); TestPendingDevices(); TestWindow();
+            TestPlist(); TestSyncDiagnostics(); TestSyncRuntime(); TestSyncLogFilter(); TestZip(); TestArtwork(); TestPdfImport(); TestCardFormatMatching(); TestStagingProbe(); TestWalletFace(); TestBatchExport(); TestResourceCatalog(); TestScanner(); TestSingleCardScan(); TestRecovery(); TestBooksConfiguration(); TestCacheResults(); TestStorage(); TestPendingDevices(); TestWindow();
             string result = "PASS: " + checks + " assertions; no iPhone operations performed.";
             Console.WriteLine(result); File.WriteAllText(Path.Combine(artifacts, "results.txt"), result); return 0;
         }
@@ -70,7 +70,7 @@ class Smoke
     }
     static void TestSyncRuntime()
     {
-        Assert(typeof(WalletEngine).Assembly.GetName().Version.ToString() == "1.2.0.0", "release assembly version is 1.2");
+        Assert(typeof(WalletEngine).Assembly.GetName().Version.ToString() == "1.3.0.0", "release assembly version is 1.3");
         Assert(!typeof(WalletEngine).Assembly.GetManifestResourceNames().Any(name => name.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase)), "release no longer embeds driver installer scripts");
         Assert(AppleSyncRuntime.FromITunesExecutable("\"D:\\Apple Tools\\iTunes.exe\"") == @"D:\Apple Tools\CoreFP.dll", "sync component locates custom desktop iTunes directory");
         Assert(AppleSyncRuntime.FromITunesExecutable(@"\\host\share\iTunes.exe") == null, "sync component rejects network executable registration");
@@ -521,6 +521,51 @@ class Smoke
             catch (IOException e) { Assert(e.InnerException.Message == "return failed", "device return failure is not hidden by concurrent cancellation"); }
         }
     }
+    static void TestResourceCatalog()
+    {
+        Func<string, byte[]> utf8 = Encoding.UTF8.GetBytes;
+        var names = CardResourceCatalog.ManifestAssets(utf8("{\"pass.json\":\"x\",\"en.lproj/pass.strings\":\"x\",\"art/custom.png\":\"x\",\"background.pdf.urls\":\"x\",\"../outside.png\":\"x\"}"));
+        Assert(names.SequenceEqual(new[] { "art/custom.png", "background.pdf.urls" }), "manifest discovers arbitrary artwork and descriptors without exporting unrelated metadata");
+        foreach (string path in new[] { "../x.png", "art/../../x.png", "/x.png", "C:/x.png", "x\\y.png", "aux.png", "folder./x.png", "x.png:stream", "x\n.png", "pass.json" })
+            Assert(!CardResourceCatalog.IsResourcePath(path), "unsafe or unrelated resource rejected: " + path);
+        Assert(CardResourceCatalog.IsResourcePath("zh.lproj/custom image.jpg"), "safe nested image accepted");
+        Throws(() => CardResourceCatalog.ManifestAssets(utf8("{\"art.png\":\"x\",\"ART.PNG\":\"y\"}")), "case insensitive output collisions rejected");
+        Throws(() => CardResourceCatalog.ManifestAssets(utf8("invalid")), "malformed manifest rejected");
+        Throws(() => CardResourceCatalog.ManifestAssets(new byte[] { 0xff }), "invalid UTF8 rejected");
+        const string digest = "a9993e364706816aba3e25717850c26c9cd0d89d";
+        string json = "{\"custom.png\":{\"url\":\"https://assets.apple.com/image\",\"size\":3,\"sha1\":\"" + digest + "\"}}";
+        var remote = CardResourceCatalog.ParseUrls("art/custom.png.urls", utf8(json)).Single();
+        Assert(remote.Name == "art/custom.png" && remote.Size == 3 && remote.Sha1 == digest, "remote descriptor preserves folder, size and digest");
+        Assert(remote.ReadVerified(new MemoryStream(utf8("abc"))).SequenceEqual(utf8("abc")), "remote bytes pass exact size and SHA1 checks without transcoding");
+        Throws(() => remote.ReadVerified(new MemoryStream(utf8("ab"))), "truncated download rejected");
+        Throws(() => remote.ReadVerified(new MemoryStream(utf8("abcd"))), "oversized download rejected");
+        Throws(() => remote.ReadVerified(new MemoryStream(utf8("xyz"))), "same-size altered download rejected");
+        using (var cancelled = new CancellationTokenSource())
+        {
+            cancelled.Cancel();
+            try { remote.ReadVerified(new MemoryStream(utf8("abc")), cancelled.Token); throw new Exception("cancel ignored"); }
+            catch (OperationCanceledException) { Assert(true, "remote validation obeys cancellation"); }
+        }
+        foreach (string url in new[] { "http://assets.apple.com/x", "https://apple.com.evil.test/x", "https://assets.apple.com:444/x", "https://u:p@assets.apple.com/x", "file:///c:/secret", "https://127.0.0.1/x", "https://assets.apple.com/x#fragment" })
+            Throws(() => new RemoteArtwork("custom.png", url, 3, digest), "unapproved remote URL rejected");
+        Throws(() => new RemoteArtwork("custom.png", "https://assets.apple.com/x", 0, digest), "invalid declared size rejected");
+        Throws(() => new RemoteArtwork("custom.png", "https://assets.apple.com/x", 3, "invalid"), "invalid declared digest rejected");
+        Throws(() => CardResourceCatalog.ParseUrls("custom.png.urls", utf8("{\"x.png\":{\"url\":\"https://assets.apple.com/x\"}}")), "missing integrity metadata prevents download");
+        var catalog = new CardResourceCatalog(); catalog.LocalAssets.Add(remote.Name); catalog.RemoteAssets.Add(remote.Name, remote);
+        catalog.LocalAssets.Add("art/custom.png.urls");
+        Assert(catalog.Assets.SequenceEqual(new[] { remote.Name }), "local and remote sources share a single output name");
+        string hash = "A0nuz33fwMffEsnDw-PwGDgbY9I=";
+        // Any valid fixture hash works; it is never sent to a phone.
+        var attempted = new List<string>();
+        byte[] pdf = utf8("%PDF-1.7\nsynthetic export fixture");
+        var result = WalletBatchExport.Export(Path.Combine(artifacts, "dynamic-resources"), hash, leaf => { attempted.Add(leaf); return pdf; },
+            selectedOriginalAssets: new[] { "art/custom.pdf" }, availableAssets: new[] { "art/custom.pdf", "other.pdf" });
+        Assert(attempted.SequenceEqual(new[] { "art/custom.pdf" }) && result.UnrecognizedFiles.Count == 0, "only selected dynamic artwork is read");
+        Assert(File.ReadAllBytes(Path.Combine(result.DirectoryPath, "art/custom.pdf")).SequenceEqual(pdf), "nested dynamic resource saves exact bytes");
+        Throws(() => WalletBatchExport.Export(Path.Combine(artifacts, "dynamic-index"), hash, leaf => { throw new Exception("must not read descriptor"); }, availableAssets: new[] { "art/custom.pdf.urls" }), "indexes are not exportable resources");
+        Throws(() => WalletBatchExport.Export(Path.Combine(artifacts, "dynamic-unsafe"), hash, leaf => null, availableAssets: new[] { "../x.png" }), "dynamic export rejects traversal before reads");
+        Throws(() => WalletBatchExport.Export(Path.Combine(artifacts, "dynamic-unknown"), hash, leaf => null, availableAssets: new[] { "custom.png" }, selectedOriginalAssets: new[] { "unlisted.png" }), "selection must belong to discovered catalog");
+    }
     static void TestStorage()
     {
         string path = Path.Combine(artifacts, "atomic.dat"); Storage.AtomicWrite(path, new byte[] {1,2}); Storage.AtomicWrite(path, new byte[] {3,4});
@@ -623,17 +668,24 @@ class Smoke
         var noticeEncoder = new PngBitmapEncoder(); noticeEncoder.Frames.Add(BitmapFrame.Create(noticeBitmap));
         using (var stream = File.Create(Path.Combine(artifacts, "driver-notice.png"))) noticeEncoder.Save(stream);
         var selectionType = typeof(MainWindow).Assembly.GetType("AirCard.Controls.ExportSelection");
-        var selection = Activator.CreateInstance(selectionType, true);
+        var catalog = new CardResourceCatalog();
+        catalog.LocalAssets.Add("custom-art.png"); catalog.LocalAssets.Add("cardBackgroundCombined.png.urls");
+        catalog.RemoteAssets.Add("remote-art.png", new RemoteArtwork("remote-art.png", "https://assets.apple.com/art", 3, "a9993e364706816aba3e25717850c26c9cd0d89d"));
+        var selection = Activator.CreateInstance(selectionType, flags, null, new object[] { catalog }, null);
         var choices = (List<CheckBox>)selectionType.GetField("choices", flags).GetValue(selection);
         var selectionWindow = (Window)selectionType.GetProperty("Window", flags).GetValue(selection);
         var accept = (Button)selectionWindow.GetType().GetProperty("AcceptButton", flags).GetValue(selectionWindow);
-        Assert(choices.Count == 12 && choices.All(c => c.IsChecked == true) && accept.IsEnabled, "export checkbox list defaults to all twelve resources");
+        Assert(choices.Count == 4 && choices.Take(3).All(c => c.IsChecked == true) && choices.Last().IsChecked == false && accept.IsEnabled, "dynamic list selects device resources but never remote downloads by default");
+        Assert(choices.All(c => c.Tag == null || !((string)c.Tag).EndsWith(".urls")), "resource indexes never appear in export selection");
+        Assert(((string[])selectionType.GetProperty("RemoteAssets", flags).GetValue(selection)).Length == 0, "no remote downloads selected by default");
         foreach (var choice in choices) choice.IsChecked = false;
         Assert(!accept.IsEnabled, "empty checkbox selection disables continuation");
         choices[0].IsChecked = true;
         Assert(accept.IsEnabled && (bool)selectionType.GetProperty("IncludeCache", flags).GetValue(selection) && ((string[])selectionType.GetProperty("OriginalAssets", flags).GetValue(selection)).Length == 0, "checkbox list supports cache-only selection");
-        choices[0].IsChecked = false; choices[2].IsChecked = true;
-        Assert(!(bool)selectionType.GetProperty("IncludeCache", flags).GetValue(selection) && ((string[])selectionType.GetProperty("OriginalAssets", flags).GetValue(selection)).Single() == WalletEngine.BatchArtworkAssets[1], "checkbox list keeps original resource selection separate from cache");
+        choices[0].IsChecked = false; choices[1].IsChecked = true;
+        Assert(!(bool)selectionType.GetProperty("IncludeCache", flags).GetValue(selection) && ((string[])selectionType.GetProperty("OriginalAssets", flags).GetValue(selection)).Single() == "custom-art.png", "checkbox list keeps arbitrary original selection separate from cache");
+        choices[1].IsChecked = false; choices.Last().IsChecked = true;
+        Assert(((string[])selectionType.GetProperty("OriginalAssets", flags).GetValue(selection)).Length == 0 && ((string[])selectionType.GetProperty("RemoteAssets", flags).GetValue(selection)).Single() == "remote-art.png", "remote choice cannot silently select device reads");
         foreach (var choice in choices) choice.IsChecked = true;
         var selectionContent = (FrameworkElement)selectionWindow.Content;
         selectionContent.Measure(new System.Windows.Size(selectionWindow.Width, double.PositiveInfinity)); var selectionSize = selectionContent.DesiredSize;

@@ -15,7 +15,7 @@ namespace AirCard.Controls
     {
         internal bool SecondarySelected { get; private set; }
         internal Button AcceptButton { get; private set; }
-        internal NoticeWindow(string title, string message, string accept = "确定", bool cancel = false, string secondary = null, UIElement extraContent = null)
+        internal NoticeWindow(string title, string message, string accept = "确定", bool cancel = false, string secondary = null, UIElement extraContent = null, double topSpacing = 20)
         {
             Title = title; Width = extraContent != null ? 580 : secondary == null ? 460 : 560; SizeToContent = SizeToContent.Height;
             ResizeMode = ResizeMode.NoResize; WindowStyle = WindowStyle.None;
@@ -42,7 +42,7 @@ namespace AirCard.Controls
             heading.SetBinding(TextBlock.TextProperty, new Binding("Title") { Source = this });
             caption.Children.Add(heading); layout.Children.Add(caption);
 
-            var body = new StackPanel { Margin = new Thickness(20) };
+            var body = new StackPanel { Margin = new Thickness(20, topSpacing, 20, 20) };
             var content = new StackPanel();
             content.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, Foreground = Brushes.White, LineHeight = 21 });
             if (extraContent != null) content.Children.Add(extraContent);

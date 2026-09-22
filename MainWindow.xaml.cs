@@ -207,16 +207,16 @@ namespace AirCard
         async void Export_Click(object sender, RoutedEventArgs e)
         {
             if (Selected == null || currentCard == null) return; string udid = Selected.Udid, hash = currentCard.Hash; var mode = Mode;
-            var selection = new Controls.ExportSelection(); selection.Window.Owner = this;
-            if (selection.Window.ShowDialog() != true) return;
-            bool includeCache = selection.IncludeCache; string[] selectedAssets = selection.OriginalAssets;
-            string folder = Controls.FolderPicker.Select(this); if (folder == null) return;
             bool captureLog = CaptureExportLog.IsChecked == true;
+            // Diagnostic capture must cover discovery too, since it uses the same
+            // device sync channel as exporting individual files.
+            string folder = captureLog ? Controls.FolderPicker.Select(this) : null;
+            if (captureLog && folder == null) return;
             WalletBatchExportResult result = null;
-            await Run("批量导出当前卡面", async () => {
+            await Run("读取卡片资源清单", async () => {
                 var engine = new WalletEngine(Log, operationCancellation.Token);
                 DeviceLogCapture capture = null;
-                string trace = Path.Combine(folder, "aircard-device-sync-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".log");
+                string trace = captureLog ? Path.Combine(folder, "aircard-device-sync-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".log") : null;
                 try
                 {
                     if (captureLog)
@@ -224,9 +224,18 @@ namespace AirCard
                         Log("开始采集手机同步日志: " + trace);
                         capture = await DeviceLogCapture.StartAsync(udid, mode, trace);
                     }
-                    result = await Task.Run(() => engine.ExportFolder(udid, mode, hash, folder, includeCache, selectedAssets));
+                    var catalog = await Task.Run(() => engine.DiscoverResources(udid, mode, hash));
+                    operationCancellation.Token.ThrowIfCancellationRequested();
+                    var selection = new Controls.ExportSelection(catalog); selection.Window.Owner = this;
+                    if (selection.Window.ShowDialog() != true) throw new OperationCanceledException("已取消导出。");
+                    bool includeCache = selection.IncludeCache; string[] selectedAssets = selection.OriginalAssets;
+                    string[] remoteAssets = selection.RemoteAssets;
+                    if (folder == null) folder = Controls.FolderPicker.Select(this);
+                    if (folder == null) throw new OperationCanceledException("已取消导出。");
+                    StatusText.Text = "批量导出当前卡面"; Log(StatusText.Text);
+                    result = await Task.Run(() => engine.ExportFolder(udid, mode, hash, folder, includeCache, selectedAssets, catalog, remoteAssets));
                 }
-                catch (OperationCanceledException) { await Task.Run(() => engine.FinishCancellation(udid, mode)); throw; }
+                catch (OperationCanceledException) { operationCancellation.Cancel(); await Task.Run(() => engine.FinishCancellation(udid, mode)); throw; }
                 finally
                 {
                     if (capture != null)
