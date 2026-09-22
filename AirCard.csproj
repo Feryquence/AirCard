@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" />
+  <PropertyGroup>
+    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+    <Platform Condition="'$(Platform)' == ''">x64</Platform>
+    <ProjectGuid>{A5F286EE-7C2A-49B3-B5C4-B4E42338C042}</ProjectGuid>
+    <ProjectTypeGuids>{60DC8134-EBA5-43B8-BCC9-BB4BC16C2548};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
+    <OutputType>WinExe</OutputType><RootNamespace>AirCard</RootNamespace><AssemblyName>AirCard</AssemblyName>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion><PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit><LangVersion>7.3</LangVersion><Deterministic>true</Deterministic>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <OutputPath>bin\$(Configuration)\</OutputPath><DebugType>pdbonly</DebugType>
+    <Optimize Condition="'$(Configuration)' == 'Release'">true</Optimize>
+    <WindowsMetadataPath Condition="'$(WindowsMetadataPath)' == ''">$(MSBuildProgramFiles32)\Windows Kits\10\UnionMetadata\Facade\Windows.winmd</WindowsMetadataPath>
+    <FrameworkFacadePath Condition="'$(FrameworkPathOverride)' != ''">$(FrameworkPathOverride)\Facades</FrameworkFacadePath>
+    <FrameworkFacadePath Condition="'$(FrameworkFacadePath)' == ''">$(MSBuildProgramFiles32)\Reference Assemblies\Microsoft\Framework\.NETFramework\$(TargetFrameworkVersion)\Facades</FrameworkFacadePath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" /><Reference Include="System.Core" /><Reference Include="System.Xml" /><Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Xaml" /><Reference Include="WindowsBase" /><Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" /><Reference Include="PresentationFramework.Aero" />
+    <Reference Include="System.Drawing" /><Reference Include="System.Web.Extensions" /><Reference Include="System.Windows.Forms" />
+    <Reference Include="System.IO.Compression" /><Reference Include="System.IO.Compression.FileSystem" />
+    <Reference Include="Windows"><HintPath>$(WindowsMetadataPath)</HintPath><IsWinMDFile>true</IsWinMDFile><Private>false</Private></Reference>
+    <Reference Include="System.Runtime.WindowsRuntime"><HintPath>$(SystemRoot)\Microsoft.NET\Framework64\v4.0.30319\System.Runtime.WindowsRuntime.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="System.Runtime"><HintPath>$(FrameworkFacadePath)\System.Runtime.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <ApplicationDefinition Include="App.xaml" />
+    <Page Include="MainWindow.xaml" /><Page Include="Themes\Dark.xaml" />
+    <Page Include="Themes\dnSpy\Dark.xaml" /><Page Include="Themes\dnSpy\Controls.xaml" />
+    <Page Include="Themes\WhiteText.xaml" />
+    <Compile Include="App.xaml.cs" /><Compile Include="MainWindow.xaml.cs" />
+    <Compile Include="Core\*.cs" /><Compile Include="Controls\*.cs" /><Compile Include="ThirdParty\dnSpy\TabButton.cs" />
+    <Content Include="ThirdParty\**\*.txt;ThirdParty\**\NOTICE.md;ThirdParty\**\REVISION;LICENSE.txt;README.md"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
+    <None Include="App.config" />
+    <Content Include="docs\**\*"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
+    <EmbeddedResource Include="ThirdParty\Apple-Mobile-Drivers-Installer\AppleDrivInstaller.ps1"><LogicalName>AirCard.AppleDrivInstaller.ps1</LogicalName></EmbeddedResource>
+    <Content Include="ThirdParty\Apple-Mobile-Drivers-Installer\*.ps1"><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>

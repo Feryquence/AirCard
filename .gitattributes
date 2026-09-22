@@ -1,0 +1,21 @@
+* text=auto
+*.cs text eol=crlf
+*.xaml text eol=crlf
+*.csproj text eol=crlf
+*.sln text eol=crlf
+*.ps1 text eol=crlf
+*.md text eol=lf
+*.png binary
+*.jpg binary
+
+# Preserve the exact vendored bytes covered by upstream SHA-256 records.
+ThirdParty/Apple-Mobile-Drivers-Installer/AppleDrivInstaller.upstream.ps1 -text
+ThirdParty/dnSpy/ColorInfo.cs -text
+ThirdParty/dnSpy/ColorInfos.cs -text
+ThirdParty/dnSpy/dark.dntheme -text
+ThirdParty/dnSpy/wpf.styles.templates.xaml -text
+ThirdParty/dnSpy/TabButton.cs -text
+ThirdParty/dnSpy/LICENSE.txt -text
+ThirdParty/dnSpy/GPLv3.txt -text
+ThirdParty/dnSpy/OtherLicenses.txt -text
+ThirdParty/dnSpy/CREDITS.txt -text
