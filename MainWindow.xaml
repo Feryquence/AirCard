@@ -52,7 +52,7 @@
                   <Grid><Image x:Name="SkinPreview" Stretch="Uniform" /><StackPanel x:Name="EmptyPreview" VerticalAlignment="Center" HorizontalAlignment="Center"><TextBlock Text="选择卡面图片或单页 PDF" FontSize="17" HorizontalAlignment="Center" Margin="0,0,0,8" /><TextBlock Text="PNG / JPG / WebP / PDF" Style="{StaticResource Hint}" HorizontalAlignment="Center" /></StackPanel></Grid>
                 </Border>
                 <TextBlock x:Name="SkinInfo" Text="尚未选择卡面" Style="{StaticResource Hint}" Margin="0,9,0,12" TextTrimming="CharacterEllipsis" />
-                <WrapPanel Margin="0,0,0,10"><Button x:Name="ChooseSkinButton" Content="选择卡面…" Style="{StaticResource ActionButton}" Click="ChooseSkin_Click" /><Button x:Name="SaveSkinButton" Content="保存处理后的 PNG…" Style="{StaticResource ActionButton}" Click="SaveSkin_Click" Margin="0" /></WrapPanel>
+                <WrapPanel Margin="0,0,0,10"><Button x:Name="ChooseSkinButton" Content="选择卡面…" Style="{StaticResource ActionButton}" Click="ChooseSkin_Click" /><Button x:Name="SaveSkinButton" Content="保存处理后的 PNG…" Style="{StaticResource ActionButton}" Click="SaveSkin_Click" /><Button x:Name="SubmitCardButton" Content="投稿卡面…" Style="{StaticResource ActionButton}" Click="SubmitCard_Click" Margin="0" ToolTip="打开 GitHub 投稿表单，上传卡面供审核收录。" /></WrapPanel>
                 <Button x:Name="ApplySkinButton" Content="应用到所选卡片" Style="{StaticResource ActionButton}" Click="ApplySkin_Click" Margin="0" HorizontalAlignment="Stretch" />
                 <TextBlock Text="应用后退出并重新打开钱包，查看新卡面。" Style="{StaticResource Hint}" FontSize="11" Margin="0,9,0,0" />
               </StackPanel>

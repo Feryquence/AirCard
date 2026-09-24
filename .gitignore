@@ -21,3 +21,5 @@ cards.json
 *.cab
 .env
 .env.*
+__pycache__/
+*.py[cod]

@@ -1,0 +1,55 @@
+name: 投稿卡面
+description: 上传卡面，审核通过后加入公共卡面库。
+title: "[卡面投稿] "
+labels: ["卡面投稿"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        填写以下信息并上传一个文件即可，无需 Fork 或创建 PR。
+        支持 PNG、JPG（不超过 10 MiB）及未加密的单页 PDF（不超过 25 MiB）。
+        审核通过后文件会公开收录；下载地址 source 由系统生成，无需填写。
+  - type: input
+    id: name
+    attributes:
+      label: 卡面名称（name）
+      placeholder: suica
+    validations:
+      required: true
+  - type: input
+    id: uploader
+    attributes:
+      label: 上传者（uploader）
+      placeholder: Feryquence
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: 描述（description）
+      description: 可以留空。
+    validations:
+      required: false
+  - type: dropdown
+    id: fanmade
+    attributes:
+      label: 是否二创（fanmade）
+      description: 原版选择 false，二创选择 true。
+      options: ["false", "true"]
+      default: 0
+    validations:
+      required: true
+  - type: dropdown
+    id: type
+    attributes:
+      label: 文件类型（type）
+      options: ["png", "jpg", "pdf"]
+    validations:
+      required: true
+  - type: textarea
+    id: attachment
+    attributes:
+      label: 卡面文件
+      description: 将一个 PNG、JPG 或 PDF 文件拖到这里，等待上传完成后再提交。请上传原文件，不要粘贴其他网站的下载链接。
+    validations:
+      required: true
