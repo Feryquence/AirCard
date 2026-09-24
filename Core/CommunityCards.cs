@@ -143,7 +143,7 @@ namespace AirCard.Core
         {
             cancellation.ThrowIfCancellationRequested();
             var request = (HttpWebRequest)WebRequest.Create(url);
-            request.Method = "GET"; request.UserAgent = "AirCard/1.3"; request.Accept = "application/json, image/png, image/jpeg, application/pdf";
+            request.Method = "GET"; request.UserAgent = "AirCard/1.4"; request.Accept = "application/json, image/png, image/jpeg, application/pdf";
             request.AllowAutoRedirect = false; request.Timeout = 15000; request.ReadWriteTimeout = 15000;
             request.Headers[HttpRequestHeader.CacheControl] = "no-cache";
             using (cancellation.Register(() => request.Abort()))

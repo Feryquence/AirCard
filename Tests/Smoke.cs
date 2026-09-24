@@ -70,7 +70,7 @@ class Smoke
     }
     static void TestSyncRuntime()
     {
-        Assert(typeof(WalletEngine).Assembly.GetName().Version.ToString() == "1.3.0.0", "release assembly version is 1.3");
+        Assert(typeof(WalletEngine).Assembly.GetName().Version.ToString() == "1.4.0.0", "release assembly version is 1.4");
         Assert(!typeof(WalletEngine).Assembly.GetManifestResourceNames().Any(name => name.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase)), "release no longer embeds driver installer scripts");
         Assert(AppleSyncRuntime.FromITunesExecutable("\"D:\\Apple Tools\\iTunes.exe\"") == @"D:\Apple Tools\CoreFP.dll", "sync component locates custom desktop iTunes directory");
         Assert(AppleSyncRuntime.FromITunesExecutable(@"\\host\share\iTunes.exe") == null, "sync component rejects network executable registration");
