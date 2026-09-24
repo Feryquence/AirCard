@@ -24,7 +24,7 @@ namespace AirCard.Core
 
     public static class CommunityCards
     {
-        public const string IndexUrl = "https://raw.githubusercontent.com/Feryquence/AirCard/cards/cards.json";
+        public const string IndexUrl = "https://api.github.com/repos/Feryquence/AirCard/contents/cards.json?ref=cards";
         const string AssetPrefix = "https://raw.githubusercontent.com/Feryquence/AirCard/cards/files/";
         const int IndexLimit = 2 * 1024 * 1024;
         const int ImageLimit = 10 * 1024 * 1024;
@@ -73,7 +73,30 @@ namespace AirCard.Core
 
         public static IList<CommunityCard> Fetch(CancellationToken cancellation)
         {
-            return Parse(Read(IndexUrl + "?t=" + DateTimeOffset.UtcNow.ToUnixTimeSeconds(), IndexLimit, cancellation));
+            // Some Windows/.NET Framework HTTP paths return a stale raw.githubusercontent.com
+            // branch URL even with a unique query and no-cache headers. The Contents API
+            // resolves the current cards branch and returns the index as Base64.
+            return Parse(DecodeIndexResponse(Read(IndexUrl + "&t=" + Guid.NewGuid().ToString("N"), 2 * IndexLimit, cancellation)));
+        }
+
+        public static byte[] DecodeIndexResponse(byte[] response)
+        {
+            if (response == null || response.Length > 2 * IndexLimit) throw new InvalidDataException("卡面库响应过大或无效。");
+            Dictionary<string, object> file;
+            try { file = Storage.Json().DeserializeObject(new UTF8Encoding(false, true).GetString(response)) as Dictionary<string, object>; }
+            catch (Exception e) { throw new InvalidDataException("卡面库响应不是有效的 JSON。", e); }
+            object value;
+            if (file == null || !file.TryGetValue("type", out value) || !Equals(value, "file") ||
+                !file.TryGetValue("name", out value) || !Equals(value, "cards.json") ||
+                !file.TryGetValue("path", out value) || !Equals(value, "cards.json") ||
+                !file.TryGetValue("encoding", out value) || !Equals(value, "base64") ||
+                !file.TryGetValue("content", out value) || !(value is string))
+                throw new InvalidDataException("卡面库响应缺少文件内容。");
+            byte[] bytes;
+            try { bytes = Convert.FromBase64String((string)value); }
+            catch (FormatException e) { throw new InvalidDataException("卡面库文件编码无效。", e); }
+            if (bytes.Length > IndexLimit) throw new InvalidDataException("卡面库索引过大。");
+            return bytes;
         }
 
         public static byte[] Download(CommunityCard card, CancellationToken cancellation)

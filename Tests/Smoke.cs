@@ -600,6 +600,10 @@ class Smoke
         string digest;
         using (var sha = System.Security.Cryptography.SHA256.Create()) digest = BitConverter.ToString(sha.ComputeHash(file)).Replace("-", "").ToLowerInvariant();
         string json = "{\"cards\":[{\"name\":\"测试卡面\",\"uploader\":\"作者\",\"description\":\"说明\",\"fanmade\":true,\"type\":\"png\",\"source\":\"https://raw.githubusercontent.com/Feryquence/AirCard/cards/files/" + digest + ".png\"}]}";
+        string api = "{\"type\":\"file\",\"name\":\"cards.json\",\"path\":\"cards.json\",\"encoding\":\"base64\",\"content\":\"" + Convert.ToBase64String(Encoding.UTF8.GetBytes(json)) + "\"}";
+        Assert(CommunityCards.Parse(CommunityCards.DecodeIndexResponse(Encoding.UTF8.GetBytes(api))).Count == 1, "GitHub Contents API index decodes into a current card listing");
+        Throws(() => CommunityCards.DecodeIndexResponse(Encoding.UTF8.GetBytes(api.Replace("\"encoding\":\"base64\"", "\"encoding\":\"none\""))), "index response without file bytes is rejected");
+        Throws(() => CommunityCards.DecodeIndexResponse(Encoding.UTF8.GetBytes(api.Replace("\"path\":\"cards.json\"", "\"path\":\"other.json\""))), "index response must identify cards.json");
         var cards = CommunityCards.Parse(Encoding.UTF8.GetBytes(json));
         Assert(cards.Count == 1 && cards[0].Name == "测试卡面" && cards[0].Detail.Contains("二创"), "library parses card metadata for in-app display");
         CommunityCards.Verify(cards[0], file); Assert(true, "downloaded original matches the content-addressed source");
