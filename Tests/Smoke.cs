@@ -597,7 +597,7 @@ class Smoke
     {
         var app = new App(); app.InitializeComponent(); var window = new MainWindow();
         var root = (FrameworkElement)window.Content; var tabs = (TabControl)window.FindName("Tabs");
-        Assert(tabs.Items.Count == 2 && window.FindName("CurrentCardText") == null && window.FindName("ChooseThemeButton") == null, "only wallet and help remain without the old card selection area");
+        Assert(tabs.Items.Count == 3 && tabs.Items[1] == window.FindName("CardLibraryTab") && window.FindName("CurrentCardText") == null && window.FindName("ChooseThemeButton") == null, "wallet, card library and help tabs exclude old card selection and keypad controls");
         for (int i = 0; i < tabs.Items.Count; i++)
         {
             tabs.SelectedIndex = i; root.Width = 1120; root.Height = 800; root.Measure(new System.Windows.Size(1120,800)); root.Arrange(new Rect(0,0,1120,800)); root.UpdateLayout();

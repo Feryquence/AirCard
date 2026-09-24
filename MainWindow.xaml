@@ -52,11 +52,25 @@
                   <Grid><Image x:Name="SkinPreview" Stretch="Uniform" /><StackPanel x:Name="EmptyPreview" VerticalAlignment="Center" HorizontalAlignment="Center"><TextBlock Text="选择卡面图片或单页 PDF" FontSize="17" HorizontalAlignment="Center" Margin="0,0,0,8" /><TextBlock Text="PNG / JPG / WebP / PDF" Style="{StaticResource Hint}" HorizontalAlignment="Center" /></StackPanel></Grid>
                 </Border>
                 <TextBlock x:Name="SkinInfo" Text="尚未选择卡面" Style="{StaticResource Hint}" Margin="0,9,0,12" TextTrimming="CharacterEllipsis" />
-                <WrapPanel Margin="0,0,0,10"><Button x:Name="ChooseSkinButton" Content="选择卡面…" Style="{StaticResource ActionButton}" Click="ChooseSkin_Click" /><Button x:Name="SaveSkinButton" Content="保存处理后的 PNG…" Style="{StaticResource ActionButton}" Click="SaveSkin_Click" /><Button x:Name="SubmitCardButton" Content="投稿卡面…" Style="{StaticResource ActionButton}" Click="SubmitCard_Click" Margin="0" ToolTip="打开 GitHub 投稿表单，上传卡面供审核收录。" /></WrapPanel>
+                <WrapPanel Margin="0,0,0,10"><Button x:Name="ChooseSkinButton" Content="选择卡面…" Style="{StaticResource ActionButton}" Click="ChooseSkin_Click" /><Button x:Name="SaveSkinButton" Content="保存处理后的 PNG…" Style="{StaticResource ActionButton}" Click="SaveSkin_Click" Margin="0" /></WrapPanel>
                 <Button x:Name="ApplySkinButton" Content="应用到所选卡片" Style="{StaticResource ActionButton}" Click="ApplySkin_Click" Margin="0" HorizontalAlignment="Stretch" />
                 <TextBlock Text="应用后退出并重新打开钱包，查看新卡面。" Style="{StaticResource Hint}" FontSize="11" Margin="0,9,0,0" />
               </StackPanel>
             </Grid>
+          </ScrollViewer>
+        </TabItem>
+        <TabItem x:Name="CardLibraryTab" Header="  卡面库  " Foreground="{DynamicResource EnvironmentForeground}">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Background="{DynamicResource EnvironmentToolWindow}">
+            <StackPanel Margin="28,24" MaxWidth="780" HorizontalAlignment="Left">
+              <TextBlock Text="公共卡面库" Style="{StaticResource SectionTitle}" />
+              <TextBlock Text="在浏览器中查看已审核的卡面文件。下载后，在“钱包卡面”中选择文件并应用。" Style="{StaticResource Hint}" Margin="0,0,0,14" />
+              <Button x:Name="BrowseCardsButton" Content="浏览卡面库…" Style="{StaticResource ActionButton}" Click="BrowseCards_Click" HorizontalAlignment="Left" />
+              <Border Height="1" Background="{DynamicResource EnvironmentToolWindowBorder}" Margin="0,24,0,24" />
+              <TextBlock Text="投稿卡面" Style="{StaticResource SectionTitle}" />
+              <TextBlock Text="登录 GitHub，填写卡面名称、上传者、描述、是否二创和文件类型，再上传一个文件。审核通过后会加入公共卡面库，下载地址自动生成。" Style="{StaticResource Hint}" Margin="0,0,0,10" />
+              <TextBlock Text="支持 PNG、JPG（不超过 10 MiB）及未加密的单页 PDF（不超过 25 MiB）。" Style="{StaticResource Hint}" Margin="0,0,0,14" />
+              <Button x:Name="SubmitCardButton" Content="投稿卡面…" Style="{StaticResource ActionButton}" Click="SubmitCard_Click" HorizontalAlignment="Left" />
+            </StackPanel>
           </ScrollViewer>
         </TabItem>
         <TabItem Header="  使用说明  " Foreground="{DynamicResource EnvironmentForeground}">

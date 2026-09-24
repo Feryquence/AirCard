@@ -1,6 +1,6 @@
 # 投稿卡面
 
-点击 Air Card 的“投稿卡面…”按钮，或打开[投稿表单](https://github.com/Feryquence/AirCard/issues/new?template=card-submission.yml)。使用 GitHub 账号登录，无需 Fork，也无需提交 PR。
+在 Air Card 的“卡面库”Tab 中点击“投稿卡面…”按钮，或打开[投稿表单](https://github.com/Feryquence/AirCard/issues/new?template=card-submission.yml)。使用 GitHub 账号登录，无需 Fork，也无需提交 PR。“浏览卡面库…”会在浏览器中打开公共卡面文件。
 
 填写名称、上传者、描述（可留空）、是否二创以及文件类型，拖入一个附件并等待上传完成，再提交。PNG/JPG 不超过 10 MiB，PDF 不超过 25 MiB，PDF 须为未加密单页。上传者是投稿人填写的展示名称，不代表系统验证的作者身份。
 

@@ -44,7 +44,7 @@ namespace AirCard
             HashBox.IsEnabled = idle;
             ScanButton.IsEnabled = scanning != null || (idle && device); ScanButton.Content = scanning != null ? "停止扫描" : "扫描卡片";
             ChooseSkinButton.IsEnabled = idle; SaveSkinButton.IsEnabled = idle && skin != null;
-            SubmitCardButton.IsEnabled = idle;
+            SubmitCardButton.IsEnabled = BrowseCardsButton.IsEnabled = idle;
             ExportButton.IsEnabled = idle && device && hash;
             CaptureExportLog.IsEnabled = idle;
             CancelOperationButton.IsEnabled = busy && operationCancellation != null && !operationCancellation.IsCancellationRequested;
@@ -254,9 +254,16 @@ namespace AirCard
         }
         void SubmitCard_Click(object sender, RoutedEventArgs e)
         {
-            const string url = "https://github.com/Feryquence/AirCard/issues/new?template=card-submission.yml";
+            OpenCommunityPage("https://github.com/Feryquence/AirCard/issues/new?template=card-submission.yml");
+        }
+        void BrowseCards_Click(object sender, RoutedEventArgs e)
+        {
+            OpenCommunityPage("https://github.com/Feryquence/AirCard/tree/cards");
+        }
+        void OpenCommunityPage(string url)
+        {
             try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
-            catch (Exception ex) { Log(ex.Message); Notice("无法打开投稿页面", "请手动打开：" + url); }
+            catch (Exception ex) { Log(ex.Message); Notice("无法打开网页", "请手动打开：" + url); }
         }
         void SaveLog_Click(object sender, RoutedEventArgs e)
         {
