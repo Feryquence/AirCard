@@ -9,18 +9,18 @@ body:
         填写以下信息并上传一个文件即可，无需 Fork 或创建 PR。
         支持 PNG、JPG（不超过 10 MiB）及未加密的单页 PDF（不超过 25 MiB）。
         审核通过后文件会公开收录；下载地址 source 由系统生成，无需填写。
+        投稿规则：禁止上传政治、色情或违反公序良俗的内容；请确保有权分享素材，不要包含他人的个人信息。
+        上传内容及其责任由上传者承担。维护者可拒绝收录或移除不符合规则的卡面。
   - type: input
     id: name
     attributes:
       label: 卡面名称（name）
-      placeholder: suica
     validations:
       required: true
   - type: input
     id: uploader
     attributes:
       label: 上传者（uploader）
-      placeholder: Feryquence
     validations:
       required: true
   - type: textarea
