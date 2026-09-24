@@ -19,6 +19,11 @@ namespace AirCard
         bool initialized, busy, closeAfterScan;
         CancellationTokenSource scanning;
         CancellationTokenSource operationCancellation;
+        CancellationTokenSource libraryCancellation, libraryPreviewCancellation;
+        IList<CommunityCard> libraryCards = new List<CommunityCard>();
+        CommunityCard librarySelected;
+        byte[] librarySelectedBytes;
+        bool libraryLoaded;
         SavedCard currentCard;
         PreparedSkin skin;
         CardArtworkFormat cardFormat;
@@ -44,7 +49,7 @@ namespace AirCard
             HashBox.IsEnabled = idle;
             ScanButton.IsEnabled = scanning != null || (idle && device); ScanButton.Content = scanning != null ? "停止扫描" : "扫描卡片";
             ChooseSkinButton.IsEnabled = idle; SaveSkinButton.IsEnabled = idle && skin != null;
-            SubmitCardButton.IsEnabled = BrowseCardsButton.IsEnabled = idle;
+            SubmitCardButton.IsEnabled = true;
             ExportButton.IsEnabled = idle && device && hash;
             CaptureExportLog.IsEnabled = idle;
             CancelOperationButton.IsEnabled = busy && operationCancellation != null && !operationCancellation.IsCancellationRequested;
@@ -256,9 +261,79 @@ namespace AirCard
         {
             OpenCommunityPage("https://github.com/Feryquence/AirCard/issues/new?template=card-submission.yml");
         }
-        void BrowseCards_Click(object sender, RoutedEventArgs e)
+        void Tabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            OpenCommunityPage("https://github.com/Feryquence/AirCard/tree/cards");
+            if (e.Source == Tabs && IsLoaded && Tabs.SelectedItem == CardLibraryTab && !libraryLoaded) _ = RefreshLibrary();
+        }
+        async void LibraryRefresh_Click(object sender, RoutedEventArgs e) { await RefreshLibrary(); }
+        async Task RefreshLibrary()
+        {
+            libraryLoaded = true;
+            if (libraryCancellation != null) libraryCancellation.Cancel();
+            var cancel = new CancellationTokenSource(); libraryCancellation = cancel;
+            LibraryRefreshButton.IsEnabled = false; LibraryStatus.Text = "正在读取卡面库…";
+            try
+            {
+                var cards = await Task.Run(() => CommunityCards.Fetch(cancel.Token));
+                if (cancel.IsCancellationRequested) return;
+                libraryCards = cards;
+                LibrarySearch_Changed(null, null);
+                LibraryStatus.Text = cards.Count == 0 ? "卡面库暂无已收录卡面。" : "已加载 " + cards.Count + " 张卡面。";
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { if (!cancel.IsCancellationRequested) { LibraryStatus.Text = "读取失败，请检查网络后点击“刷新卡面库”。"; Log("卡面库读取失败: " + ex.Message); } }
+            finally { if (libraryCancellation == cancel) { LibraryRefreshButton.IsEnabled = true; libraryCancellation = null; } cancel.Dispose(); }
+        }
+        void LibrarySearch_Changed(object sender, TextChangedEventArgs e)
+        {
+            if (LibraryList == null) return;
+            string query = LibrarySearch == null ? "" : LibrarySearch.Text.Trim();
+            LibraryList.ItemsSource = libraryCards.Where(card => query.Length == 0 ||
+                card.Name.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                card.Uploader.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                card.Description.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+        }
+        async void LibraryList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (libraryPreviewCancellation != null) libraryPreviewCancellation.Cancel();
+            var card = LibraryList.SelectedItem as CommunityCard;
+            librarySelected = card; librarySelectedBytes = null; LibraryPreview.Source = null; LibraryDownloadButton.IsEnabled = false;
+            LibraryName.Text = card == null ? "尚未选择卡面" : card.Name;
+            LibraryMeta.Text = card == null ? "" : card.Detail;
+            LibraryDescription.Text = card == null ? "" : card.Description;
+            LibraryPreviewHint.Text = card == null ? "选择左侧卡面查看预览" : "正在下载预览…";
+            LibraryPreviewHint.Visibility = Visibility.Visible;
+            if (card == null) return;
+            var cancel = new CancellationTokenSource(); libraryPreviewCancellation = cancel;
+            try
+            {
+                var bytes = await Task.Run(() => CommunityCards.Download(card, cancel.Token));
+                if (cancel.IsCancellationRequested || librarySelected != card) return;
+                librarySelectedBytes = bytes; LibraryDownloadButton.IsEnabled = true;
+                LibraryStatus.Text = "已校验文件，可下载原文件。";
+                try
+                {
+                    var preview = await Task.Run(() => card.Type == "pdf" ? PdfArtwork.Render(bytes) : bytes);
+                    if (cancel.IsCancellationRequested || librarySelected != card) return;
+                    LibraryPreview.Source = Preview(preview); LibraryPreviewHint.Visibility = Visibility.Collapsed;
+                }
+                catch (Exception ex) { if (!cancel.IsCancellationRequested && librarySelected == card) { LibraryPreviewHint.Text = "无法预览，原文件仍可下载。"; Log("卡面库预览失败: " + ex.Message); } }
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { if (!cancel.IsCancellationRequested && librarySelected == card) { LibraryPreviewHint.Text = "无法读取此卡面"; LibraryStatus.Text = "文件下载失败，请重试或刷新卡面库。"; Log("卡面库文件下载失败: " + ex.Message); } }
+            finally { if (libraryPreviewCancellation == cancel) libraryPreviewCancellation = null; cancel.Dispose(); }
+        }
+        void LibraryDownload_Click(object sender, RoutedEventArgs e)
+        {
+            if (librarySelected == null || librarySelectedBytes == null) return;
+            var card = librarySelected; var bytes = librarySelectedBytes;
+            string safeName = new string(card.Name.Where(c => !Path.GetInvalidFileNameChars().Contains(c)).ToArray()).Trim().TrimEnd('.');
+            if (safeName.Length == 0) safeName = "AirCard";
+            var dialog = new SaveFileDialog { Title = "保存卡面原文件", Filter = card.Type.ToUpperInvariant() + " 文件|*." + card.Type,
+                FileName = safeName + "." + card.Type, DefaultExt = "." + card.Type, AddExtension = true };
+            if (dialog.ShowDialog(this) != true) return;
+            try { Storage.AtomicWrite(dialog.FileName, bytes); LibraryStatus.Text = "已保存到 " + dialog.FileName; Log("已下载卡面库文件: " + dialog.FileName); }
+            catch (Exception ex) { LibraryStatus.Text = "保存失败，详见操作日志。"; Log("保存卡面库文件失败: " + ex); }
         }
         void OpenCommunityPage(string url)
         {
@@ -279,6 +354,7 @@ namespace AirCard
         {
             if (busy) { e.Cancel = true; StatusText.Text = "操作进行中，请等待完成后关闭。"; return; }
             if (scanning != null) { e.Cancel = true; closeAfterScan = true; scanning.Cancel(); }
+            if (!e.Cancel) { if (libraryCancellation != null) libraryCancellation.Cancel(); if (libraryPreviewCancellation != null) libraryPreviewCancellation.Cancel(); }
         }
     }
 }

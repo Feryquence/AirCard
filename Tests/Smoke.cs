@@ -26,7 +26,7 @@ class Smoke
         try
         {
             artifacts = args[0]; Storage.Root = Path.Combine(artifacts, "state");
-            TestPlist(); TestSyncDiagnostics(); TestSyncRuntime(); TestSyncLogFilter(); TestZip(); TestArtwork(); TestPdfImport(); TestCardFormatMatching(); TestStagingProbe(); TestWalletFace(); TestBatchExport(); TestResourceCatalog(); TestScanner(); TestSingleCardScan(); TestRecovery(); TestBooksConfiguration(); TestCacheResults(); TestStorage(); TestPendingDevices(); TestWindow();
+            TestPlist(); TestSyncDiagnostics(); TestSyncRuntime(); TestSyncLogFilter(); TestZip(); TestArtwork(); TestPdfImport(); TestCardFormatMatching(); TestStagingProbe(); TestWalletFace(); TestBatchExport(); TestResourceCatalog(); TestCommunityCards(); TestScanner(); TestSingleCardScan(); TestRecovery(); TestBooksConfiguration(); TestCacheResults(); TestStorage(); TestPendingDevices(); TestWindow();
             string result = "PASS: " + checks + " assertions; no iPhone operations performed.";
             Console.WriteLine(result); File.WriteAllText(Path.Combine(artifacts, "results.txt"), result); return 0;
         }
@@ -593,11 +593,27 @@ class Smoke
         Assert(!WalletEngine.IsWalletCacheTarget(root + ".pkpass"), "actual card artwork cannot become optional");
         Assert(!WalletEngine.IsWalletCacheTarget("/var/mobile/Library/Caches/TelephonyUI-10") && !WalletEngine.IsWalletCacheTarget(root + "/../x.cache"), "theme and traversal targets cannot become optional");
     }
+    static void TestCommunityCards()
+    {
+        Assert(CommunityCards.Parse(Encoding.UTF8.GetBytes("{\"cards\":[]}")).Count == 0, "empty public card library is a valid index");
+        var file = new byte[] { 137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3 };
+        string digest;
+        using (var sha = System.Security.Cryptography.SHA256.Create()) digest = BitConverter.ToString(sha.ComputeHash(file)).Replace("-", "").ToLowerInvariant();
+        string json = "{\"cards\":[{\"name\":\"测试卡面\",\"uploader\":\"作者\",\"description\":\"说明\",\"fanmade\":true,\"type\":\"png\",\"source\":\"https://raw.githubusercontent.com/Feryquence/AirCard/cards/files/" + digest + ".png\"}]}";
+        var cards = CommunityCards.Parse(Encoding.UTF8.GetBytes(json));
+        Assert(cards.Count == 1 && cards[0].Name == "测试卡面" && cards[0].Detail.Contains("二创"), "library parses card metadata for in-app display");
+        CommunityCards.Verify(cards[0], file); Assert(true, "downloaded original matches the content-addressed source");
+        Throws(() => CommunityCards.Verify(cards[0], new byte[] { 137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 4 }), "changed original is rejected by SHA-256");
+        Throws(() => CommunityCards.Parse(Encoding.UTF8.GetBytes(json.Replace("raw.githubusercontent.com/Feryquence/AirCard", "example.com"))), "untrusted library source is rejected");
+        Throws(() => CommunityCards.Parse(Encoding.UTF8.GetBytes(json.Replace(".png\"", ".pdf\""))), "source extension must match declared type");
+    }
     static void TestWindow()
     {
         var app = new App(); app.InitializeComponent(); var window = new MainWindow();
         var root = (FrameworkElement)window.Content; var tabs = (TabControl)window.FindName("Tabs");
         Assert(tabs.Items.Count == 3 && tabs.Items[1] == window.FindName("CardLibraryTab") && window.FindName("CurrentCardText") == null && window.FindName("ChooseThemeButton") == null, "wallet, card library and help tabs exclude old card selection and keypad controls");
+        Assert(window.FindName("LibraryList") is ListBox && window.FindName("LibraryPreview") is System.Windows.Controls.Image && window.FindName("LibraryDownloadButton") is Button && window.FindName("BrowseCardsButton") == null,
+            "community cards are browsed, previewed and downloaded within the application");
         for (int i = 0; i < tabs.Items.Count; i++)
         {
             tabs.SelectedIndex = i; root.Width = 1120; root.Height = 800; root.Measure(new System.Windows.Size(1120,800)); root.Arrange(new Rect(0,0,1120,800)); root.UpdateLayout();
