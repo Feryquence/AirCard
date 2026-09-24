@@ -8,6 +8,7 @@
     <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Static ToolBar.ComboBoxStyleKey}}"><Setter Property="Height" Value="32" /><Setter Property="Padding" Value="8,0" /><Setter Property="HorizontalAlignment" Value="Stretch" /><Setter Property="VerticalAlignment" Value="Center" /><Setter Property="VerticalContentAlignment" Value="Center" /></Style>
     <Style x:Key="SectionTitle" TargetType="TextBlock"><Setter Property="FontSize" Value="16" /><Setter Property="FontWeight" Value="SemiBold" /><Setter Property="Margin" Value="0,0,0,8" /></Style>
     <Style x:Key="Hint" TargetType="TextBlock"><Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}" /><Setter Property="TextWrapping" Value="Wrap" /><Setter Property="LineHeight" Value="20" /></Style>
+    <Thickness x:Key="TabContentPadding">22,20</Thickness>
   </Window.Resources>
   <Border Style="{StaticResource DeveloperMainWindowFrameStyle}">
     <Grid>
@@ -31,7 +32,7 @@
       <TabControl x:Name="Tabs" Grid.Row="2" Margin="6,8,6,0" Style="{StaticResource FileTabGroupTabControlStyle}" ItemContainerStyle="{StaticResource DeveloperWorkspaceTabItemStyle}" SelectionChanged="Tabs_SelectionChanged">
         <TabItem Header="  钱包卡面  " Foreground="{DynamicResource EnvironmentForeground}">
           <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Background="{DynamicResource EnvironmentToolWindow}">
-            <Grid Margin="22,20"><Grid.ColumnDefinitions><ColumnDefinition Width="*" MinWidth="340" /><ColumnDefinition Width="28" /><ColumnDefinition Width="*" MinWidth="320" /></Grid.ColumnDefinitions>
+            <Grid Margin="{StaticResource TabContentPadding}"><Grid.ColumnDefinitions><ColumnDefinition Width="*" MinWidth="340" /><ColumnDefinition Width="28" /><ColumnDefinition Width="*" MinWidth="320" /></Grid.ColumnDefinitions>
               <StackPanel>
                 <TextBlock Text="卡片标识" Style="{StaticResource SectionTitle}" />
                 <TextBlock Text="点击“扫描卡片”后，请在“钱包”App中点击要修改的卡片" Style="{StaticResource Hint}" Margin="0,0,0,12" />
@@ -60,12 +61,12 @@
           </ScrollViewer>
         </TabItem>
         <TabItem x:Name="CardLibraryTab" Header="  卡面库  " Foreground="{DynamicResource EnvironmentForeground}">
-          <Border Background="{DynamicResource EnvironmentToolWindow}" Padding="22,18">
+          <Border Background="{DynamicResource EnvironmentToolWindow}" Padding="{StaticResource TabContentPadding}">
             <Grid>
             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
             <DockPanel Margin="0,0,0,8">
               <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"><Button x:Name="LibraryRefreshButton" Content="刷新卡面库" Style="{StaticResource ActionButton}" Click="LibraryRefresh_Click" /><Button x:Name="SubmitCardButton" Content="投稿卡面…" Style="{StaticResource ActionButton}" Click="SubmitCard_Click" Margin="0" /></StackPanel>
-              <TextBlock Text="公共卡面库" Style="{StaticResource SectionTitle}" VerticalAlignment="Center" Margin="0" />
+              <TextBlock Text="公共卡面库" Style="{StaticResource SectionTitle}" VerticalAlignment="Top" Margin="0" />
             </DockPanel>
             <TextBlock Grid.Row="1" Text="在软件中查看已审核的卡面，选择后预览并下载原文件。投稿需要 GitHub 账号。" Style="{StaticResource Hint}" Margin="0,0,0,14" />
             <Grid Grid.Row="2"><Grid.ColumnDefinitions><ColumnDefinition Width="290" MinWidth="230" /><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
@@ -85,7 +86,7 @@
           </Border>
         </TabItem>
         <TabItem Header="  使用说明  " Foreground="{DynamicResource EnvironmentForeground}">
-          <ScrollViewer VerticalScrollBarVisibility="Auto" Background="{DynamicResource EnvironmentToolWindow}"><StackPanel Margin="28,24" MaxWidth="780" HorizontalAlignment="Left">
+          <ScrollViewer VerticalScrollBarVisibility="Auto" Background="{DynamicResource EnvironmentToolWindow}"><StackPanel Margin="{StaticResource TabContentPadding}" MaxWidth="780" HorizontalAlignment="Left">
             <TextBlock Text="连接与使用" Style="{StaticResource SectionTitle}" />
             <TextBlock Style="{StaticResource Hint}" Text="1. 安装 Apple 官方完整 64 位桌面版 iTunes（包含设备驱动和同步组件）。&#10;2. USB 连接 iPhone，解锁并信任此电脑，然后刷新设备。&#10;3. 扫描卡片时，在手机钱包里点开目标卡片；识别到第一张后自动停止。&#10;4. 选择导出当前卡面，或导入图片、单页 PDF；点击应用后识别格式，不匹配时选择转换或取消。&#10;5. WiFi 连接需要先通过 USB 配对并启用 WiFi 同步。" />
             <TextBlock Text="卡面导出" Style="{StaticResource SectionTitle}" Margin="0,24,0,8" />
