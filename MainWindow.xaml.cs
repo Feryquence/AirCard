@@ -29,7 +29,7 @@ namespace AirCard
         CardArtworkFormat cardFormat;
         public MainWindow()
         {
-            InitializeComponent(); initialized = true;
+            InitializeComponent(); initialized = true; UpdateLibraryPreviewCorners();
             try { CardScanner.DeleteLegacyHistory(); } catch (Exception ex) { Log("旧版卡片历史清理失败（不会读取或使用）: " + ex.Message); }
             UpdateState();
         }
@@ -293,11 +293,19 @@ namespace AirCard
                 card.Uploader.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 ||
                 card.Description.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
         }
+        void LibraryRoundedPreview_Changed(object sender, RoutedEventArgs e) { UpdateLibraryPreviewCorners(); }
+        void UpdateLibraryPreviewCorners()
+        {
+            if (LibraryPreview == null || LibraryRoundedPreviewCheck == null) return;
+            // Preview the requested 3.18 mm radius relative to an 85.6 mm wide card.
+            double radius = LibraryRoundedPreviewCheck.IsChecked == true ? LibraryPreview.Width * 3.18 / 85.6 : 0;
+            LibraryPreview.RadiusX = LibraryPreview.RadiusY = radius;
+        }
         async void LibraryList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (libraryPreviewCancellation != null) libraryPreviewCancellation.Cancel();
             var card = LibraryList.SelectedItem as CommunityCard;
-            librarySelected = card; librarySelectedBytes = null; LibraryPreview.Source = null; LibraryDownloadButton.IsEnabled = false;
+            librarySelected = card; librarySelectedBytes = null; LibraryPreviewBrush.ImageSource = null; LibraryDownloadButton.IsEnabled = false;
             LibraryName.Text = card == null ? "尚未选择卡面" : card.Name;
             LibraryMeta.Text = card == null ? "" : card.Detail;
             LibraryDescription.Text = card == null ? "" : card.Description;
@@ -315,7 +323,10 @@ namespace AirCard
                 {
                     var preview = await Task.Run(() => card.Type == "pdf" ? PdfArtwork.Render(bytes) : bytes);
                     if (cancel.IsCancellationRequested || librarySelected != card) return;
-                    LibraryPreview.Source = Preview(preview); LibraryPreviewHint.Visibility = Visibility.Collapsed;
+                    var image = Preview(preview);
+                    LibraryPreview.Width = image.PixelWidth; LibraryPreview.Height = image.PixelHeight;
+                    LibraryPreviewBrush.ImageSource = image; UpdateLibraryPreviewCorners();
+                    LibraryPreviewHint.Visibility = Visibility.Collapsed;
                 }
                 catch (Exception ex) { if (!cancel.IsCancellationRequested && librarySelected == card) { LibraryPreviewHint.Text = "无法预览，原文件仍可下载。"; Log("卡面库预览失败: " + ex.Message); } }
             }
