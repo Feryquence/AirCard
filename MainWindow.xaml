@@ -77,12 +77,12 @@
                 </ListBox>
               </DockPanel>
               <Grid Grid.Column="2"><Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                <CheckBox x:Name="LibraryRoundedPreviewCheck" Content="显示圆角预览" IsChecked="True" Foreground="{DynamicResource EnvironmentForeground}" Margin="0,0,0,8" Checked="LibraryRoundedPreview_Changed" Unchecked="LibraryRoundedPreview_Changed" ToolTip="仅影响预览，不修改下载的原文件。" />
+                <CheckBox x:Name="LibraryRoundedPreviewCheck" Content="显示圆角预览" IsChecked="True" Foreground="{DynamicResource EnvironmentForeground}" HorizontalAlignment="Left" Margin="0,0,0,8" Checked="LibraryRoundedPreview_Changed" Unchecked="LibraryRoundedPreview_Changed" ToolTip="仅影响预览，不修改下载的原文件。" />
                 <Border Grid.Row="1" Background="#202023" BorderBrush="{DynamicResource EnvironmentToolWindowBorder}" BorderThickness="1" CornerRadius="12" Padding="8"><Grid>
                   <Viewbox Stretch="Uniform"><Rectangle x:Name="LibraryPreview" Width="1536" Height="969" RadiusX="57.06" RadiusY="57.06"><Rectangle.Fill><ImageBrush x:Name="LibraryPreviewBrush" Stretch="Fill" /></Rectangle.Fill></Rectangle></Viewbox>
                   <TextBlock x:Name="LibraryPreviewHint" Text="选择左侧卡面查看预览" Style="{StaticResource Hint}" VerticalAlignment="Center" HorizontalAlignment="Center" />
                 </Grid></Border>
-                <StackPanel Grid.Row="2" Margin="0,12,0,0"><TextBlock x:Name="LibraryName" Text="尚未选择卡面" Style="{StaticResource SectionTitle}" /><TextBlock x:Name="LibraryMeta" Style="{StaticResource Hint}" Margin="0,0,0,5" /><TextBlock x:Name="LibraryDescription" Style="{StaticResource Hint}" MaxHeight="58" TextTrimming="CharacterEllipsis" /><Button x:Name="LibraryDownloadButton" Content="下载原文件…" Style="{StaticResource ActionButton}" Click="LibraryDownload_Click" HorizontalAlignment="Left" Margin="0,12,0,0" IsEnabled="False" /></StackPanel>
+                <StackPanel Grid.Row="2" Margin="0,12,0,0"><TextBlock x:Name="LibraryName" Text="尚未选择卡面" Style="{StaticResource SectionTitle}" /><TextBlock x:Name="LibraryMeta" Style="{StaticResource Hint}" Margin="0,0,0,5" /><TextBlock x:Name="LibraryDescription" Style="{StaticResource Hint}" MaxHeight="58" TextTrimming="CharacterEllipsis" /><WrapPanel Margin="0,12,0,0"><Button x:Name="LibraryUseButton" Content="立即使用" Style="{StaticResource ActionButton}" Click="LibraryUse_Click" ToolTip="将卡面存入本地缓存并载入“钱包卡面”，不会直接写入手机。" IsEnabled="False" /><Button x:Name="LibraryDownloadButton" Content="下载原文件…" Style="{StaticResource ActionButton}" Click="LibraryDownload_Click" Margin="0" IsEnabled="False" /></WrapPanel></StackPanel>
               </Grid>
             </Grid>
             <TextBlock x:Name="LibraryStatus" Grid.Row="3" Text="切换到此页后读取卡面库。" Style="{StaticResource Hint}" Margin="0,10,0,0" />

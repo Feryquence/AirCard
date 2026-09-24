@@ -607,6 +607,10 @@ class Smoke
         var cards = CommunityCards.Parse(Encoding.UTF8.GetBytes(json));
         Assert(cards.Count == 1 && cards[0].Name == "测试卡面" && cards[0].Detail.Contains("二创"), "library parses card metadata for in-app display");
         CommunityCards.Verify(cards[0], file); Assert(true, "downloaded original matches the content-addressed source");
+        string cached = CommunityCards.Cache(cards[0], file);
+        Assert(cached == Path.Combine(Storage.Root, "CardLibraryCache", digest + ".png") && File.ReadAllBytes(cached).SequenceEqual(file), "immediate use caches the original bytes under their verified digest");
+        Throws(() => CommunityCards.Cache(cards[0], new byte[] { 137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 4 }), "corrupted library card cannot replace the cache");
+        Assert(File.ReadAllBytes(cached).SequenceEqual(file), "failed cache validation preserves the previous file");
         Throws(() => CommunityCards.Verify(cards[0], new byte[] { 137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 4 }), "changed original is rejected by SHA-256");
         Throws(() => CommunityCards.Parse(Encoding.UTF8.GetBytes(json.Replace("raw.githubusercontent.com/Feryquence/AirCard", "example.com"))), "untrusted library source is rejected");
         Throws(() => CommunityCards.Parse(Encoding.UTF8.GetBytes(json.Replace(".png\"", ".pdf\""))), "source extension must match declared type");
@@ -616,7 +620,7 @@ class Smoke
         var app = new App(); app.InitializeComponent(); var window = new MainWindow();
         var root = (FrameworkElement)window.Content; var tabs = (TabControl)window.FindName("Tabs");
         Assert(tabs.Items.Count == 3 && tabs.Items[1] == window.FindName("CardLibraryTab") && window.FindName("CurrentCardText") == null && window.FindName("ChooseThemeButton") == null, "wallet, card library and help tabs exclude old card selection and keypad controls");
-        Assert(window.FindName("LibraryList") is ListBox && window.FindName("LibraryPreview") is System.Windows.Shapes.Rectangle && ((CheckBox)window.FindName("LibraryRoundedPreviewCheck")).IsChecked == true && window.FindName("LibraryDownloadButton") is Button && window.FindName("BrowseCardsButton") == null,
+        Assert(window.FindName("LibraryList") is ListBox && window.FindName("LibraryPreview") is System.Windows.Shapes.Rectangle && ((CheckBox)window.FindName("LibraryRoundedPreviewCheck")).IsChecked == true && window.FindName("LibraryUseButton") is Button && window.FindName("LibraryDownloadButton") is Button && window.FindName("BrowseCardsButton") == null,
             "community cards are browsed, previewed and downloaded within the application");
         for (int i = 0; i < tabs.Items.Count; i++)
         {

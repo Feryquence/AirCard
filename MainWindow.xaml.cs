@@ -50,6 +50,7 @@ namespace AirCard
             ScanButton.IsEnabled = scanning != null || (idle && device); ScanButton.Content = scanning != null ? "停止扫描" : "扫描卡片";
             ChooseSkinButton.IsEnabled = idle; SaveSkinButton.IsEnabled = idle && skin != null;
             SubmitCardButton.IsEnabled = true;
+            LibraryUseButton.IsEnabled = idle && librarySelected != null && librarySelectedBytes != null;
             ExportButton.IsEnabled = idle && device && hash;
             CaptureExportLog.IsEnabled = idle;
             CancelOperationButton.IsEnabled = busy && operationCancellation != null && !operationCancellation.IsCancellationRequested;
@@ -90,7 +91,7 @@ namespace AirCard
             catch (AppleDriverException ex) { StatusText.Text = action + "：Apple 环境不完整"; Log(ex.ToString()); PromptDriver(ex); return false; }
             catch (CardAppliedException ex) { StatusText.Text = ex.Message; Log(ex.ToString()); Notice("卡面已写入，后续处理未完成", ex.Message); return false; }
             catch (OperationCanceledException ex) { StatusText.Text = ex.Message; Log(ex.Message); return false; }
-            catch (Exception ex) { StatusText.Text = action + "：失败，详见日志"; Log(ex.ToString()); if (action == "应用卡面") Notice("应用未完成", ex.Message + "\n详细原因见操作日志。"); return false; }
+            catch (Exception ex) { StatusText.Text = action + "：失败，详见日志"; Log(ex.ToString()); if (action == "应用卡面" || action == "从卡面库载入卡面") Notice("操作未完成", ex.Message + "\n详细原因见操作日志。"); return false; }
             finally { if (operationCancellation != null) operationCancellation.Dispose(); operationCancellation = null; busy = false; UpdateState(); }
         }
         void CancelOperation_Click(object sender, RoutedEventArgs e)
@@ -305,7 +306,7 @@ namespace AirCard
         {
             if (libraryPreviewCancellation != null) libraryPreviewCancellation.Cancel();
             var card = LibraryList.SelectedItem as CommunityCard;
-            librarySelected = card; librarySelectedBytes = null; LibraryPreviewBrush.ImageSource = null; LibraryDownloadButton.IsEnabled = false;
+            librarySelected = card; librarySelectedBytes = null; LibraryPreviewBrush.ImageSource = null; LibraryDownloadButton.IsEnabled = false; UpdateState();
             LibraryName.Text = card == null ? "尚未选择卡面" : card.Name;
             LibraryMeta.Text = card == null ? "" : card.Detail;
             LibraryDescription.Text = card == null ? "" : card.Description;
@@ -317,8 +318,8 @@ namespace AirCard
             {
                 var bytes = await Task.Run(() => CommunityCards.Download(card, cancel.Token));
                 if (cancel.IsCancellationRequested || librarySelected != card) return;
-                librarySelectedBytes = bytes; LibraryDownloadButton.IsEnabled = true;
-                LibraryStatus.Text = "已校验文件，可下载原文件。";
+                librarySelectedBytes = bytes; LibraryDownloadButton.IsEnabled = true; UpdateState();
+                LibraryStatus.Text = "已校验文件，可立即使用或下载原文件。";
                 try
                 {
                     var preview = await Task.Run(() => card.Type == "pdf" ? PdfArtwork.Render(bytes) : bytes);
@@ -333,6 +334,23 @@ namespace AirCard
             catch (OperationCanceledException) { }
             catch (Exception ex) { if (!cancel.IsCancellationRequested && librarySelected == card) { LibraryPreviewHint.Text = "无法读取此卡面"; LibraryStatus.Text = "文件下载失败，请重试或刷新卡面库。"; Log("卡面库文件下载失败: " + ex.Message); } }
             finally { if (libraryPreviewCancellation == cancel) libraryPreviewCancellation = null; cancel.Dispose(); }
+        }
+        async void LibraryUse_Click(object sender, RoutedEventArgs e)
+        {
+            var card = librarySelected; var bytes = librarySelectedBytes;
+            if (card == null || bytes == null) return;
+            await Run("从卡面库载入卡面", async () => {
+                var token = operationCancellation.Token;
+                string path = await Task.Run(() => CommunityCards.Cache(card, bytes));
+                token.ThrowIfCancellationRequested();
+                Log("卡面库文件已缓存: " + path);
+                var prepared = await Task.Run(() => PreparedSkin.LoadPreview(path));
+                token.ThrowIfCancellationRequested();
+                skin = prepared;
+                SkinPreview.Source = Preview(prepared.Png); EmptyPreview.Visibility = Visibility.Collapsed;
+                SkinInfo.Text = card.Name + " · 已从卡面库载入";
+                Tabs.SelectedIndex = 0;
+            }, () => "已载入卡面。扫描目标卡片后，点击“应用到所选卡片”。", notify: true, cancellable: true);
         }
         void LibraryDownload_Click(object sender, RoutedEventArgs e)
         {

@@ -101,11 +101,26 @@ namespace AirCard.Core
 
         public static byte[] Download(CommunityCard card, CancellationToken cancellation)
         {
-            if (card == null || card.Digest == null || !card.Source.Equals(AssetPrefix + card.Digest + "." + card.Type, StringComparison.Ordinal) || !AssetName.IsMatch(card.Digest + "." + card.Type))
-                throw new InvalidDataException("卡面库文件地址无效。");
+            ValidateSource(card);
             byte[] bytes = Read(card.Source, card.Type == "pdf" ? PdfLimit : ImageLimit, cancellation);
             Verify(card, bytes);
             return bytes;
+        }
+
+        public static string Cache(CommunityCard card, byte[] bytes)
+        {
+            ValidateSource(card);
+            Verify(card, bytes);
+            string path = Path.Combine(Storage.Root, "CardLibraryCache", card.Digest + "." + card.Type);
+            Storage.AtomicWrite(path, bytes);
+            return path;
+        }
+
+        static void ValidateSource(CommunityCard card)
+        {
+            if (card == null || card.Digest == null || card.Source == null || !AssetName.IsMatch(card.Digest + "." + card.Type) ||
+                !card.Source.Equals(AssetPrefix + card.Digest + "." + card.Type, StringComparison.Ordinal))
+                throw new InvalidDataException("卡面库文件地址无效。");
         }
 
         public static void Verify(CommunityCard card, byte[] bytes)
