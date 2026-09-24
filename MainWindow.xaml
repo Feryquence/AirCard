@@ -60,7 +60,8 @@
           </ScrollViewer>
         </TabItem>
         <TabItem x:Name="CardLibraryTab" Header="  卡面库  " Foreground="{DynamicResource EnvironmentForeground}">
-          <Grid Background="{DynamicResource EnvironmentToolWindow}" Margin="22,18">
+          <Border Background="{DynamicResource EnvironmentToolWindow}" Padding="22,18">
+            <Grid>
             <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
             <DockPanel Margin="0,0,0,8">
               <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"><Button x:Name="LibraryRefreshButton" Content="刷新卡面库" Style="{StaticResource ActionButton}" Click="LibraryRefresh_Click" /><Button x:Name="SubmitCardButton" Content="投稿卡面…" Style="{StaticResource ActionButton}" Click="SubmitCard_Click" Margin="0" /></StackPanel>
@@ -80,7 +81,8 @@
               </Grid>
             </Grid>
             <TextBlock x:Name="LibraryStatus" Grid.Row="3" Text="切换到此页后读取卡面库。" Style="{StaticResource Hint}" Margin="0,10,0,0" />
-          </Grid>
+            </Grid>
+          </Border>
         </TabItem>
         <TabItem Header="  使用说明  " Foreground="{DynamicResource EnvironmentForeground}">
           <ScrollViewer VerticalScrollBarVisibility="Auto" Background="{DynamicResource EnvironmentToolWindow}"><StackPanel Margin="28,24" MaxWidth="780" HorizontalAlignment="Left">
