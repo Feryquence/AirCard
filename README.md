@@ -1,3 +1,4 @@
+# 从 iOS 27.2 开始，本工具不再有效
 # Air Card
 
 用于 Windows 的 iPhone 钱包卡面工具，基于 C#、WPF 和 .NET Framework 4.7.2。
